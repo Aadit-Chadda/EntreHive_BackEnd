@@ -74,6 +74,7 @@ INSTALLED_APPS = [
 
     # Your apps
     'accounts',
+    'projects',
 ]
 
 
@@ -93,9 +94,24 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-# Django allauth configuration=
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+# Django allauth configuration (updated for modern allauth)
+ACCOUNT_EMAIL_VERIFICATION = "none"  # Disable for testing
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_USER_MODEL_USERNAME_FIELD = "username"
+ACCOUNT_USER_MODEL_EMAIL_FIELD = "email"
+
+# Modern allauth configuration
+ACCOUNT_LOGIN_METHODS = {'email'}  # Allow login with email
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']  # Required fields with asterisk
+
+# Registration form fields
+ACCOUNT_SIGNUP_FORM_CLASS = None
+ACCOUNT_FORMS = {}
+
+# Additional allauth settings
+ACCOUNT_SESSION_REMEMBER = None
+ACCOUNT_USERNAME_BLACKLIST = []
+ACCOUNT_USERNAME_MIN_LENGTH = 1
 
 ROOT_URLCONF = 'entrehive_backend.urls'
 
@@ -198,6 +214,9 @@ REST_AUTH = {
     'PASSWORD_RESET_VERIFY_URL': 'reset-password/',
 
     'OLD_PASSWORD_FIELD_ENABLED': True,
+    
+    # Custom serializer for registration
+    'REGISTER_SERIALIZER': 'accounts.serializers.ExtendedRegisterSerializer',
 }
 
 # SimpleJWT settings for JWT token lifetimes and behavior
@@ -285,6 +304,11 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Media files (user uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
