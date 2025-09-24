@@ -7,16 +7,43 @@ from accounts.serializers import UserProfileSerializer
 class UserBasicSerializer(serializers.ModelSerializer):
     """Basic user serializer for project team member display"""
     full_name = serializers.SerializerMethodField()
+    profile = serializers.SerializerMethodField()
     
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'full_name']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'full_name', 'profile']
         read_only_fields = ['id', 'username', 'email']
     
     def get_full_name(self, obj):
         if hasattr(obj, 'profile'):
             return obj.profile.get_full_name()
         return f"{obj.first_name} {obj.last_name}".strip() or obj.username
+    
+    def get_profile(self, obj):
+        """Include profile data with full_name"""
+        try:
+            if hasattr(obj, 'profile') and obj.profile:
+                return {
+                    'full_name': obj.profile.get_full_name(),
+                    'profile_picture': obj.profile.profile_picture.url if obj.profile.profile_picture else None,
+                    'user_role': obj.profile.user_role,
+                    'university': obj.profile.university,
+                    'bio': obj.profile.bio,
+                }
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error accessing profile for user {obj.id}: {e}")
+        
+        # Fallback when profile doesn't exist or there's an error
+        return {
+            'full_name': f"{obj.first_name} {obj.last_name}".strip() or obj.username,
+            'profile_picture': None,
+            'user_role': 'student',
+            'university': None,
+            'bio': None,
+        }
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -65,10 +92,11 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
         fields = [
-            'title', 'project_type', 'status', 'summary', 'needs',
+            'id', 'title', 'project_type', 'status', 'summary', 'needs',
             'categories', 'tags', 'preview_image', 'pitch_url',
             'repo_url', 'visibility'
         ]
+        read_only_fields = ['id']
     
     def create(self, validated_data):
         # Set the owner to the current user

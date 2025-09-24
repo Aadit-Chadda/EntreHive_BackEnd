@@ -31,14 +31,15 @@ class ProjectListCreateView(generics.ListCreateAPIView):
         Filter projects based on user permissions and visibility
         """
         user = self.request.user
-        queryset = Project.objects.all()
+        queryset = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile')
         
         # Filter by visibility - users can see:
         # 1. Their own projects (any visibility)
-        # 2. Projects they're team members of
+        # 2. Projects they're team members of (any visibility)
         # 3. Public projects
         # 4. University projects if they're from same university
         # 5. Cross-university projects
+        # Note: Private projects are only visible to owner and team members
         
         visibility_filter = Q(visibility='public') | Q(visibility='cross_university')
         
@@ -46,7 +47,7 @@ class ProjectListCreateView(generics.ListCreateAPIView):
         if hasattr(user, 'profile') and user.profile.university:
             visibility_filter |= Q(visibility='university')
         
-        # Add user's own projects and projects they're team members of
+        # Add user's own projects and projects they're team members of (including private)
         user_projects_filter = Q(owner=user) | Q(team_members=user)
         
         final_filter = visibility_filter | user_projects_filter
@@ -83,13 +84,35 @@ class ProjectListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return ProjectCreateSerializer
         return ProjectSerializer
+    
+    def perform_create(self, serializer):
+        """
+        Set the project owner to the current user when creating
+        """
+        serializer.save(owner=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to return full project data after creation"""
+        # Use ProjectCreateSerializer for input validation
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Save the project
+        self.perform_create(serializer)
+        project = serializer.instance
+        
+        # Return full project data using ProjectSerializer
+        output_serializer = ProjectSerializer(project, context={'request': request})
+        headers = self.get_success_headers(output_serializer.data)
+        
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update or delete a project
     """
-    queryset = Project.objects.all()
+    queryset = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile')
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticated]
     
@@ -108,7 +131,10 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
         # Check if user can view this project
         if not self.can_view_project(obj, user):
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("You don't have permission to view this project.")
+            raise PermissionDenied(
+                detail="You don't have permission to view this project. Private projects are only visible to the owner and team members.",
+                code=403
+            )
         
         return obj
     
@@ -119,6 +145,10 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
         # Owner and team members can always view
         if project.is_team_member(user):
             return True
+        
+        # Private projects are only visible to owner and team members
+        if project.visibility == 'private':
+            return False  # Already handled by is_team_member check above
         
         # Public projects are viewable by everyone
         if project.visibility == 'public':
@@ -167,12 +197,38 @@ class UserProjectsView(generics.ListAPIView):
     
     def get_queryset(self):
         user_id = self.kwargs.get('user_id')
-        user = get_object_or_404(User, id=user_id)
+        target_user = get_object_or_404(User, id=user_id)
+        current_user = self.request.user
         
-        # Return projects where user is owner or team member
-        return Project.objects.filter(
-            Q(owner=user) | Q(team_members=user)
-        ).distinct().order_by('-created_at')
+        # Base filter: projects where target user is owner or team member
+        queryset = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile').filter(
+            Q(owner=target_user) | Q(team_members=target_user)
+        ).distinct()
+        
+        # Apply visibility filters - current user can only see:
+        # 1. Their own projects (any visibility)
+        # 2. Projects they're team members of (any visibility) 
+        # 3. Public projects
+        # 4. University projects (if same university)
+        # 5. Cross-university projects
+        # Note: Private projects are only visible to owner and team members
+        
+        if current_user != target_user:
+            # Filter out private projects unless current user is a team member
+            visibility_filter = Q(visibility='public') | Q(visibility='cross_university')
+            
+            # Add university filter if users are from same university
+            if (hasattr(current_user, 'profile') and hasattr(target_user, 'profile') and 
+                current_user.profile.university == target_user.profile.university):
+                visibility_filter |= Q(visibility='university')
+            
+            # Add projects where current user is owner or team member (including private)
+            user_projects_filter = Q(owner=current_user) | Q(team_members=current_user)
+            
+            final_filter = visibility_filter | user_projects_filter
+            queryset = queryset.filter(final_filter)
+        
+        return queryset.order_by('-created_at')
 
 
 @api_view(['POST'])

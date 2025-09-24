@@ -28,6 +28,7 @@ class Project(models.Model):
     
     # Visibility options
     VISIBILITY_CHOICES = [
+        ('private', 'Private'),
         ('university', 'University'),
         ('cross_university', 'Cross University'),
         ('public', 'Public'),
@@ -130,7 +131,7 @@ class Project(models.Model):
     visibility = models.CharField(
         max_length=20, 
         choices=VISIBILITY_CHOICES, 
-        default='university',
+        default='private',
         help_text="Project visibility level"
     )
     
