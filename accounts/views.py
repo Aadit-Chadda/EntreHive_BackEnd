@@ -10,7 +10,9 @@ from .models import UserProfile
 from .serializers import (
     UserProfileSerializer, 
     UserProfileCreateUpdateSerializer,
-    PublicUserProfileSerializer
+    PublicUserProfileSerializer,
+    EnhancedUserProfileSerializer,
+    EnhancedPublicUserProfileSerializer
 )
 
 User = get_user_model()
@@ -50,9 +52,9 @@ class ProfileUpdateView(generics.UpdateAPIView):
 
 class PublicProfileView(generics.RetrieveAPIView):
     """
-    View public profile by username or user ID
+    View public profile by username or user ID with posts and projects
     """
-    serializer_class = PublicUserProfileSerializer
+    serializer_class = EnhancedPublicUserProfileSerializer
     permission_classes = [AllowAny]
     lookup_field = 'user__username'
     lookup_url_kwarg = 'username'
@@ -64,9 +66,9 @@ class PublicProfileView(generics.RetrieveAPIView):
 
 class ProfileListView(generics.ListAPIView):
     """
-    List public profiles with search and filtering
+    List public profiles with search and filtering (enhanced with posts and projects)
     """
-    serializer_class = PublicUserProfileSerializer
+    serializer_class = EnhancedPublicUserProfileSerializer
     permission_classes = [AllowAny]
     
     def get_queryset(self):
@@ -143,7 +145,7 @@ def check_email(request):
 @permission_classes([IsAuthenticated])
 def my_profile(request):
     """
-    Get authenticated user's complete profile information
+    Get authenticated user's complete profile information with posts and projects
     """
     try:
         profile = request.user.profile
@@ -151,7 +153,8 @@ def my_profile(request):
         # Create profile if it doesn't exist
         profile = UserProfile.objects.create(user=request.user)
     
-    serializer = UserProfileSerializer(profile)
+    # Use enhanced serializer that includes posts and projects
+    serializer = EnhancedUserProfileSerializer(profile, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 

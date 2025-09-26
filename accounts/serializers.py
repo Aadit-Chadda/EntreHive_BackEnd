@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from dj_rest_auth.registration.serializers import RegisterSerializer
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from .models import UserProfile
 
 User = get_user_model()
@@ -240,3 +241,323 @@ class ExtendedRegisterSerializer(CustomRegisterSerializer):
         profile.save()
         
         return user
+
+
+# Enhanced serializers with posts and projects
+class ProjectSummarySerializer(serializers.Serializer):
+    """
+    Simplified project serializer for profile inclusion
+    """
+    id = serializers.UUIDField(read_only=True)
+    title = serializers.CharField(read_only=True)
+    project_type = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    visibility = serializers.CharField(read_only=True)
+    preview_image = serializers.URLField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    team_count = serializers.SerializerMethodField()
+    
+    def get_team_count(self, obj):
+        return obj.get_team_count()
+
+
+class PostSummarySerializer(serializers.Serializer):
+    """
+    Simplified post serializer for profile inclusion
+    """
+    id = serializers.UUIDField(read_only=True)
+    content = serializers.CharField(read_only=True)
+    image_url = serializers.SerializerMethodField()
+    visibility = serializers.CharField(read_only=True)
+    is_edited = serializers.BooleanField(read_only=True)
+    likes_count = serializers.SerializerMethodField()
+    comments_count = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField(read_only=True)
+    
+    def get_image_url(self, obj):
+        if obj.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+        return None
+    
+    def get_likes_count(self, obj):
+        return obj.get_likes_count()
+    
+    def get_comments_count(self, obj):
+        return obj.get_comments_count()
+
+
+class EnhancedUserProfileSerializer(UserProfileSerializer):
+    """
+    Enhanced profile serializer with posts and projects
+    """
+    user_posts = serializers.SerializerMethodField()
+    owned_projects = serializers.SerializerMethodField()
+    member_projects = serializers.SerializerMethodField()
+    posts_count = serializers.SerializerMethodField()
+    projects_count = serializers.SerializerMethodField()
+    
+    class Meta(UserProfileSerializer.Meta):
+        fields = UserProfileSerializer.Meta.fields + [
+            'user_posts', 'owned_projects', 'member_projects', 
+            'posts_count', 'projects_count'
+        ]
+    
+    def get_user_posts(self, obj):
+        """Get user's recent posts (limited to 10 most recent)"""
+        from posts.models import Post
+        
+        # Check if viewing own profile or if posts should be visible
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user == obj.user:
+            # Own profile - show all posts
+            posts = Post.objects.filter(author=obj.user)
+        else:
+            # Other's profile - apply visibility rules
+            if request_user and request_user.is_authenticated:
+                user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+                posts = Post.objects.filter(
+                    author=obj.user
+                ).filter(
+                    Q(visibility='public') |
+                    (Q(visibility='university') & Q(author__profile__university=user_university) if user_university else Q(pk=None))
+                )
+            else:
+                # Unauthenticated - only public posts
+                posts = Post.objects.filter(author=obj.user, visibility='public')
+        
+        posts = posts.order_by('-created_at')[:10]
+        return PostSummarySerializer(posts, many=True, context=self.context).data
+    
+    def get_owned_projects(self, obj):
+        """Get projects owned by the user"""
+        from projects.models import Project
+        
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user == obj.user:
+            # Own profile - show all owned projects
+            projects = Project.objects.filter(owner=obj.user)
+        else:
+            # Other's profile - apply visibility rules
+            if request_user and request_user.is_authenticated:
+                user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+                projects = Project.objects.filter(
+                    owner=obj.user
+                ).filter(
+                    Q(visibility='public') |
+                    Q(visibility='cross_university') |
+                    (Q(visibility='university') & Q(owner__profile__university=user_university) if user_university else Q(pk=None))
+                )
+            else:
+                # Unauthenticated - only public projects
+                projects = Project.objects.filter(owner=obj.user, visibility='public')
+        
+        projects = projects.order_by('-created_at')[:10]
+        return ProjectSummarySerializer(projects, many=True, context=self.context).data
+    
+    def get_member_projects(self, obj):
+        """Get projects where user is a team member"""
+        from projects.models import Project
+        
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user == obj.user:
+            # Own profile - show all member projects
+            projects = Project.objects.filter(team_members=obj.user)
+        else:
+            # Other's profile - apply visibility rules
+            if request_user and request_user.is_authenticated:
+                user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+                projects = Project.objects.filter(
+                    team_members=obj.user
+                ).filter(
+                    Q(visibility='public') |
+                    Q(visibility='cross_university') |
+                    (Q(visibility='university') & Q(owner__profile__university=user_university) if user_university else Q(pk=None))
+                )
+            else:
+                # Unauthenticated - only public projects
+                projects = Project.objects.filter(team_members=obj.user, visibility='public')
+        
+        projects = projects.order_by('-created_at')[:10]
+        return ProjectSummarySerializer(projects, many=True, context=self.context).data
+    
+    def get_posts_count(self, obj):
+        """Get total count of user's visible posts"""
+        from posts.models import Post
+        
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user == obj.user:
+            return Post.objects.filter(author=obj.user).count()
+        else:
+            if request_user and request_user.is_authenticated:
+                user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+                return Post.objects.filter(
+                    author=obj.user
+                ).filter(
+                    Q(visibility='public') |
+                    (Q(visibility='university') & Q(author__profile__university=user_university) if user_university else Q(pk=None))
+                ).count()
+            else:
+                return Post.objects.filter(author=obj.user, visibility='public').count()
+    
+    def get_projects_count(self, obj):
+        """Get total count of user's visible projects"""
+        from projects.models import Project
+        
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user == obj.user:
+            owned = Project.objects.filter(owner=obj.user).count()
+            member = Project.objects.filter(team_members=obj.user).count()
+            return {'owned': owned, 'member': member, 'total': owned + member}
+        else:
+            if request_user and request_user.is_authenticated:
+                user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+                owned = Project.objects.filter(
+                    owner=obj.user
+                ).filter(
+                    Q(visibility='public') |
+                    Q(visibility='cross_university') |
+                    (Q(visibility='university') & Q(owner__profile__university=user_university) if user_university else Q(pk=None))
+                ).count()
+                member = Project.objects.filter(
+                    team_members=obj.user
+                ).filter(
+                    Q(visibility='public') |
+                    Q(visibility='cross_university') |
+                    (Q(visibility='university') & Q(owner__profile__university=user_university) if user_university else Q(pk=None))
+                ).count()
+                return {'owned': owned, 'member': member, 'total': owned + member}
+            else:
+                owned = Project.objects.filter(owner=obj.user, visibility='public').count()
+                member = Project.objects.filter(team_members=obj.user, visibility='public').count()
+                return {'owned': owned, 'member': member, 'total': owned + member}
+
+
+class EnhancedPublicUserProfileSerializer(PublicUserProfileSerializer):
+    """
+    Enhanced public profile serializer with posts and projects
+    """
+    user_posts = serializers.SerializerMethodField()
+    owned_projects = serializers.SerializerMethodField()
+    member_projects = serializers.SerializerMethodField()
+    posts_count = serializers.SerializerMethodField()
+    projects_count = serializers.SerializerMethodField()
+    
+    class Meta(PublicUserProfileSerializer.Meta):
+        fields = PublicUserProfileSerializer.Meta.fields + [
+            'user_posts', 'owned_projects', 'member_projects', 
+            'posts_count', 'projects_count'
+        ]
+    
+    def get_user_posts(self, obj):
+        """Get user's public posts (limited to 10 most recent)"""
+        from posts.models import Post
+        
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user and request_user.is_authenticated:
+            user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+            posts = Post.objects.filter(
+                author=obj.user
+            ).filter(
+                Q(visibility='public') |
+                (Q(visibility='university') & Q(author__profile__university=user_university) if user_university else Q(pk=None))
+            )
+        else:
+            posts = Post.objects.filter(author=obj.user, visibility='public')
+        
+        posts = posts.order_by('-created_at')[:10]
+        return PostSummarySerializer(posts, many=True, context=self.context).data
+    
+    def get_owned_projects(self, obj):
+        """Get user's public owned projects"""
+        from projects.models import Project
+        
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user and request_user.is_authenticated:
+            user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+            projects = Project.objects.filter(
+                owner=obj.user
+            ).filter(
+                Q(visibility='public') |
+                Q(visibility='cross_university') |
+                (Q(visibility='university') & Q(owner__profile__university=user_university) if user_university else Q(pk=None))
+            )
+        else:
+            projects = Project.objects.filter(owner=obj.user, visibility='public')
+        
+        projects = projects.order_by('-created_at')[:10]
+        return ProjectSummarySerializer(projects, many=True, context=self.context).data
+    
+    def get_member_projects(self, obj):
+        """Get user's public member projects"""
+        from projects.models import Project
+        
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user and request_user.is_authenticated:
+            user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+            projects = Project.objects.filter(
+                team_members=obj.user
+            ).filter(
+                Q(visibility='public') |
+                Q(visibility='cross_university') |
+                (Q(visibility='university') & Q(owner__profile__university=user_university) if user_university else Q(pk=None))
+            )
+        else:
+            projects = Project.objects.filter(team_members=obj.user, visibility='public')
+        
+        projects = projects.order_by('-created_at')[:10]
+        return ProjectSummarySerializer(projects, many=True, context=self.context).data
+    
+    def get_posts_count(self, obj):
+        """Get count of user's visible posts"""
+        from posts.models import Post
+        
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user and request_user.is_authenticated:
+            user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+            return Post.objects.filter(
+                author=obj.user
+            ).filter(
+                Q(visibility='public') |
+                (Q(visibility='university') & Q(author__profile__university=user_university) if user_university else Q(pk=None))
+            ).count()
+        else:
+            return Post.objects.filter(author=obj.user, visibility='public').count()
+    
+    def get_projects_count(self, obj):
+        """Get count of user's visible projects"""
+        from projects.models import Project
+        
+        request_user = self.context.get('request').user if self.context.get('request') else None
+        
+        if request_user and request_user.is_authenticated:
+            user_university = getattr(request_user.profile, 'university', None) if hasattr(request_user, 'profile') else None
+            owned = Project.objects.filter(
+                owner=obj.user
+            ).filter(
+                Q(visibility='public') |
+                Q(visibility='cross_university') |
+                (Q(visibility='university') & Q(owner__profile__university=user_university) if user_university else Q(pk=None))
+            ).count()
+            member = Project.objects.filter(
+                team_members=obj.user
+            ).filter(
+                Q(visibility='public') |
+                Q(visibility='cross_university') |
+                (Q(visibility='university') & Q(owner__profile__university=user_university) if user_university else Q(pk=None))
+            ).count()
+            return {'owned': owned, 'member': member, 'total': owned + member}
+        else:
+            owned = Project.objects.filter(owner=obj.user, visibility='public').count()
+            member = Project.objects.filter(team_members=obj.user, visibility='public').count()
+            return {'owned': owned, 'member': member, 'total': owned + member}

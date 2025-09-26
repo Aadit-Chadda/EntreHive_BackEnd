@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     # Your apps
     'accounts',
     'projects',
+    'posts',
 ]
 
 
@@ -102,6 +103,7 @@ ACCOUNT_USER_MODEL_EMAIL_FIELD = "email"
 
 # Modern allauth configuration
 ACCOUNT_LOGIN_METHODS = {'email'}  # Allow login with email
+ACCOUNT_EMAIL_REQUIRED = True  # Required for email login
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']  # Required fields with asterisk
 
 # Registration form fields

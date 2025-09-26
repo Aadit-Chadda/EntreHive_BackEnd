@@ -870,4 +870,697 @@ axios.interceptors.response.use(
 
 ---
 
+## 📝 Posts & Social Features
+
+### 1. Create Post
+
+**Endpoint:** `POST /api/posts/`
+
+**Description:** Create a new post with optional project tagging and image upload.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json (for JSON data)
+Content-Type: multipart/form-data (for image uploads)
+```
+
+**Request Body (JSON):**
+```json
+{
+  "content": "Just launched my new AI project! Excited to share it with the community 🚀",
+  "visibility": "public",
+  "tagged_project_ids": ["550e8400-e29b-41d4-a716-446655440000"]
+}
+```
+
+**Request Body (Form Data with Image):**
+```
+content: "Check out this screenshot of our app!"
+visibility: "public"
+image: [image file - JPG, PNG, GIF]
+tagged_project_ids: ["550e8400-e29b-41d4-a716-446655440000"]
+```
+
+**Field Descriptions:**
+- `content` (required): Post content (1-2000 characters)
+- `visibility` (optional): "public", "university", "private" (default: "public")
+- `tagged_project_ids` (optional): Array of project UUIDs to tag
+- `image` (optional): Image attachment (JPG, PNG, GIF)
+
+**Success Response (201):**
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "author": {
+    "id": 1,
+    "username": "johndoe123",
+    "full_name": "John Doe",
+    "profile_picture": "http://localhost:8000/media/profile_pictures/john_doe.jpg",
+    "user_role": "student"
+  },
+  "content": "Just launched my new AI project! Excited to share it with the community 🚀",
+  "image_url": null,
+  "visibility": "public",
+  "tagged_projects": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "AI Assistant Bot",
+      "project_type": "startup",
+      "status": "mvp"
+    }
+  ],
+  "is_edited": false,
+  "likes_count": 0,
+  "comments_count": 0,
+  "is_liked": false,
+  "can_edit": true,
+  "can_delete": true,
+  "created_at": "2025-09-17T15:30:00Z",
+  "updated_at": "2025-09-17T15:30:00Z"
+}
+```
+
+---
+
+### 2. Get Posts Feed
+
+**Endpoint:** `GET /api/posts/`
+
+**Description:** Get paginated list of posts visible to the user.
+
+**Headers:**
+```
+Authorization: Bearer <access_token> (optional for public posts)
+```
+
+**Query Parameters:**
+- `page` - Page number for pagination
+- `page_size` - Number of posts per page (default: 20)
+- `search` - Search in post content and author names
+- `visibility` - Filter by visibility: "public", "university", "private"
+- `author__profile__user_role` - Filter by author role: "student", "professor", "investor"
+- `ordering` - Sort order: "created_at", "-created_at", "likes_count", "-likes_count"
+
+**Example Requests:**
+```
+GET /api/posts/
+GET /api/posts/?search=AI&ordering=-likes_count
+GET /api/posts/?visibility=public&author__profile__user_role=student
+```
+
+**Success Response (200):**
+```json
+{
+  "count": 150,
+  "next": "http://localhost:8000/api/posts/?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "author": {
+        "id": 1,
+        "username": "johndoe123",
+        "full_name": "John Doe",
+        "profile_picture": "http://localhost:8000/media/profile_pictures/john_doe.jpg",
+        "user_role": "student"
+      },
+      "content": "Just launched my new AI project! Excited to share it with the community 🚀",
+      "image_url": null,
+      "visibility": "public",
+      "tagged_projects": [
+        {
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "title": "AI Assistant Bot",
+          "project_type": "startup",
+          "status": "mvp"
+        }
+      ],
+      "is_edited": false,
+      "likes_count": 15,
+      "comments_count": 3,
+      "is_liked": false,
+      "can_edit": false,
+      "can_delete": false,
+      "created_at": "2025-09-17T15:30:00Z",
+      "updated_at": "2025-09-17T15:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 3. Get Single Post
+
+**Endpoint:** `GET /api/posts/{post_id}/`
+
+**Description:** Get detailed view of a single post including comments.
+
+**Headers:**
+```
+Authorization: Bearer <access_token> (optional for public posts)
+```
+
+**Success Response (200):**
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "author": {
+    "id": 1,
+    "username": "johndoe123",
+    "full_name": "John Doe",
+    "profile_picture": "http://localhost:8000/media/profile_pictures/john_doe.jpg",
+    "user_role": "student"
+  },
+  "content": "Just launched my new AI project! Excited to share it with the community 🚀",
+  "image_url": null,
+  "visibility": "public",
+  "tagged_projects": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "AI Assistant Bot",
+      "project_type": "startup",
+      "status": "mvp"
+    }
+  ],
+  "is_edited": false,
+  "likes_count": 15,
+  "comments_count": 3,
+  "is_liked": false,
+  "comments": [
+    {
+      "id": "456e7890-e89b-12d3-a456-426614174000",
+      "author": {
+        "id": 2,
+        "username": "jane_smith",
+        "full_name": "Jane Smith",
+        "profile_picture": null,
+        "user_role": "professor"
+      },
+      "content": "Congratulations! This looks amazing!",
+      "parent": null,
+      "is_edited": false,
+      "created_at": "2025-09-17T16:00:00Z",
+      "updated_at": "2025-09-17T16:00:00Z",
+      "replies": [],
+      "replies_count": 0,
+      "can_edit": false,
+      "can_delete": false
+    }
+  ],
+  "can_edit": false,
+  "can_delete": false,
+  "created_at": "2025-09-17T15:30:00Z",
+  "updated_at": "2025-09-17T15:30:00Z"
+}
+```
+
+---
+
+### 4. Update Post
+
+**Endpoint:** `PATCH /api/posts/{post_id}/`
+
+**Description:** Update a post (only by the author).
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "content": "Updated: Just launched my new AI project! Now with better features 🚀",
+  "visibility": "public",
+  "tagged_project_ids": ["550e8400-e29b-41d4-a716-446655440000"]
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "author": {
+    "id": 1,
+    "username": "johndoe123",
+    "full_name": "John Doe",
+    "profile_picture": "http://localhost:8000/media/profile_pictures/john_doe.jpg",
+    "user_role": "student"
+  },
+  "content": "Updated: Just launched my new AI project! Now with better features 🚀",
+  "image_url": null,
+  "visibility": "public",
+  "tagged_projects": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "AI Assistant Bot",
+      "project_type": "startup",
+      "status": "mvp"
+    }
+  ],
+  "is_edited": true,
+  "likes_count": 15,
+  "comments_count": 3,
+  "is_liked": false,
+  "can_edit": true,
+  "can_delete": true,
+  "created_at": "2025-09-17T15:30:00Z",
+  "updated_at": "2025-09-17T16:30:00Z"
+}
+```
+
+---
+
+### 5. Delete Post
+
+**Endpoint:** `DELETE /api/posts/{post_id}/`
+
+**Description:** Delete a post (only by the author).
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (204):** No content
+
+**Error Response (403):**
+```json
+{
+  "error": "You can only delete your own posts"
+}
+```
+
+---
+
+### 6. Like/Unlike Post
+
+**Endpoint:** `POST /api/posts/{post_id}/like/`
+
+**Description:** Toggle like status on a post.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response - Liked (201):**
+```json
+{
+  "message": "Post liked",
+  "liked": true,
+  "likes_count": 16
+}
+```
+
+**Success Response - Unliked (200):**
+```json
+{
+  "message": "Post unliked",
+  "liked": false,
+  "likes_count": 15
+}
+```
+
+---
+
+### 7. Get Post Likes
+
+**Endpoint:** `GET /api/posts/{post_id}/likes/`
+
+**Description:** Get list of users who liked the post.
+
+**Success Response (200):**
+```json
+[
+  {
+    "id": "789e0123-e89b-12d3-a456-426614174000",
+    "user": {
+      "id": 3,
+      "username": "alex_dev",
+      "full_name": "Alex Developer",
+      "profile_picture": null,
+      "user_role": "student"
+    },
+    "created_at": "2025-09-17T16:15:00Z"
+  }
+]
+```
+
+---
+
+### 8. Share Post
+
+**Endpoint:** `POST /api/posts/{post_id}/share/`
+
+**Description:** Share a post and get shareable URL.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (201):**
+```json
+{
+  "message": "Post shared",
+  "share_url": "http://localhost:8000/posts/123e4567-e89b-12d3-a456-426614174000/"
+}
+```
+
+---
+
+### 9. Get My Posts
+
+**Endpoint:** `GET /api/posts/my_posts/`
+
+**Description:** Get current user's posts.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (200):**
+```json
+{
+  "count": 5,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "author": {
+        "id": 1,
+        "username": "johndoe123",
+        "full_name": "John Doe",
+        "profile_picture": "http://localhost:8000/media/profile_pictures/john_doe.jpg",
+        "user_role": "student"
+      },
+      "content": "My latest project update...",
+      "image_url": null,
+      "visibility": "public",
+      "tagged_projects": [],
+      "is_edited": false,
+      "likes_count": 10,
+      "comments_count": 2,
+      "is_liked": false,
+      "can_edit": true,
+      "can_delete": true,
+      "created_at": "2025-09-17T15:30:00Z",
+      "updated_at": "2025-09-17T15:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 10. Get Personalized Feed
+
+**Endpoint:** `GET /api/posts/feed/`
+
+**Description:** Get personalized feed based on user's university and preferences.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (200):** Same format as Get Posts Feed
+
+---
+
+## 💬 Comments API
+
+### 1. Get Post Comments
+
+**Endpoint:** `GET /api/posts/{post_id}/comments/`
+
+**Description:** Get all comments for a specific post.
+
+**Success Response (200):**
+```json
+[
+  {
+    "id": "456e7890-e89b-12d3-a456-426614174000",
+    "author": {
+      "id": 2,
+      "username": "jane_smith",
+      "full_name": "Jane Smith",
+      "profile_picture": null,
+      "user_role": "professor"
+    },
+    "content": "Great work on this project!",
+    "parent": null,
+    "is_edited": false,
+    "created_at": "2025-09-17T16:00:00Z",
+    "updated_at": "2025-09-17T16:00:00Z",
+    "replies": [
+      {
+        "id": "789e0123-e89b-12d3-a456-426614174000",
+        "author": {
+          "id": 1,
+          "username": "johndoe123",
+          "full_name": "John Doe",
+          "profile_picture": "http://localhost:8000/media/profile_pictures/john_doe.jpg",
+          "user_role": "student"
+        },
+        "content": "Thank you so much!",
+        "parent": "456e7890-e89b-12d3-a456-426614174000",
+        "is_edited": false,
+        "created_at": "2025-09-17T16:05:00Z",
+        "updated_at": "2025-09-17T16:05:00Z",
+        "replies": [],
+        "replies_count": 0,
+        "can_edit": true,
+        "can_delete": true
+      }
+    ],
+    "replies_count": 1,
+    "can_edit": false,
+    "can_delete": false
+  }
+]
+```
+
+---
+
+### 2. Create Comment
+
+**Endpoint:** `POST /api/posts/{post_id}/comments/`
+
+**Description:** Add a comment to a post.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "content": "This is an amazing project! How did you implement the AI features?",
+  "parent": null
+}
+```
+
+**Request Body (Reply to Comment):**
+```json
+{
+  "content": "I used TensorFlow and OpenAI's API for the natural language processing.",
+  "parent": "456e7890-e89b-12d3-a456-426614174000"
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "id": "abc12345-e89b-12d3-a456-426614174000",
+  "author": {
+    "id": 3,
+    "username": "alex_dev",
+    "full_name": "Alex Developer",
+    "profile_picture": null,
+    "user_role": "student"
+  },
+  "content": "This is an amazing project! How did you implement the AI features?",
+  "parent": null,
+  "is_edited": false,
+  "created_at": "2025-09-17T16:30:00Z",
+  "updated_at": "2025-09-17T16:30:00Z",
+  "replies": [],
+  "replies_count": 0,
+  "can_edit": true,
+  "can_delete": true
+}
+```
+
+---
+
+### 3. Update Comment
+
+**Endpoint:** `PATCH /api/posts/{post_id}/comments/{comment_id}/`
+
+**Description:** Update a comment (only by the author).
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "content": "Updated: This is an amazing project! How did you implement the AI features? Also, what technologies did you use?"
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "id": "abc12345-e89b-12d3-a456-426614174000",
+  "author": {
+    "id": 3,
+    "username": "alex_dev",
+    "full_name": "Alex Developer",
+    "profile_picture": null,
+    "user_role": "student"
+  },
+  "content": "Updated: This is an amazing project! How did you implement the AI features? Also, what technologies did you use?",
+  "parent": null,
+  "is_edited": true,
+  "created_at": "2025-09-17T16:30:00Z",
+  "updated_at": "2025-09-17T16:45:00Z",
+  "replies": [],
+  "replies_count": 0,
+  "can_edit": true,
+  "can_delete": true
+}
+```
+
+---
+
+### 4. Delete Comment
+
+**Endpoint:** `DELETE /api/posts/{post_id}/comments/{comment_id}/`
+
+**Description:** Delete a comment (by author or post author).
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (204):** No content
+
+---
+
+## 📱 React Frontend Integration Examples
+
+### Create Post with Image
+
+```javascript
+const createPost = async (postData) => {
+  const token = localStorage.getItem('access_token');
+  const formData = new FormData();
+  
+  formData.append('content', postData.content);
+  formData.append('visibility', postData.visibility);
+  
+  if (postData.image) {
+    formData.append('image', postData.image);
+  }
+  
+  if (postData.taggedProjects && postData.taggedProjects.length > 0) {
+    formData.append('tagged_project_ids', JSON.stringify(postData.taggedProjects));
+  }
+  
+  const response = await fetch('/api/posts/', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: formData
+  });
+  
+  return await response.json();
+};
+```
+
+### Like/Unlike Post
+
+```javascript
+const toggleLike = async (postId) => {
+  const token = localStorage.getItem('access_token');
+  
+  const response = await fetch(`/api/posts/${postId}/like/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    }
+  });
+  
+  return await response.json();
+};
+```
+
+### Add Comment
+
+```javascript
+const addComment = async (postId, content, parentId = null) => {
+  const token = localStorage.getItem('access_token');
+  
+  const response = await fetch(`/api/posts/${postId}/comments/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      content,
+      parent: parentId
+    })
+  });
+  
+  return await response.json();
+};
+```
+
+### Share Post
+
+```javascript
+const sharePost = async (postId) => {
+  const token = localStorage.getItem('access_token');
+  
+  const response = await fetch(`/api/posts/${postId}/share/`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    }
+  });
+  
+  const data = await response.json();
+  
+  // Copy to clipboard or open share dialog
+  if (navigator.share) {
+    navigator.share({
+      title: 'Check out this post on EntreHive',
+      url: data.share_url
+    });
+  } else {
+    navigator.clipboard.writeText(data.share_url);
+  }
+  
+  return data;
+};
+```
+
+---
+
 This API guide provides comprehensive documentation for integrating with the EntreHive backend. All endpoints are tested and ready for production use with your React frontend.

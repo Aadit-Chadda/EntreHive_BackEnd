@@ -25,6 +25,7 @@ urlpatterns = [
     path('api/auth/registration/', include('dj_rest_auth.registration.urls')),
     path('api/accounts/', include('accounts.urls')),
     path('api/projects/', include('projects.urls')),
+    path('api/', include('posts.urls')),
 ]
 
 # Serve media files during development
