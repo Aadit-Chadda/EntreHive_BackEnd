@@ -34,7 +34,14 @@ class UserProfile(models.Model):
     )
     bio = models.TextField(max_length=1000, blank=True, null=True, help_text="Tell us about yourself")
     location = models.CharField(max_length=100, blank=True, null=True, help_text="City, Country")
-    university = models.CharField(max_length=200, blank=True, null=True, help_text="Your university or institution")
+    university = models.ForeignKey(
+        'universities.University',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='users',
+        help_text="Your university or institution (optional for investors)"
+    )
     
     # Additional relevant information based on role
     # For students
@@ -70,7 +77,8 @@ class UserProfile(models.Model):
     def __str__(self):
         full_name = self.get_full_name()
         return f"{full_name} ({self.user.username}) - {self.get_user_role_display()}"
-    
+
+        
     def get_full_name(self):
         """Return full name or username if names not provided"""
         if self.first_name and self.last_name:
@@ -93,13 +101,13 @@ class UserProfile(models.Model):
             return {
                 'major': self.major,
                 'graduation_year': self.graduation_year,
-                'university': self.university
+                'university': self.university.name if self.university else None
             }
         elif self.user_role == 'professor':
             return {
                 'department': self.department,
                 'research_interests': self.research_interests,
-                'university': self.university
+                'university': self.university.name if self.university else None
             }
         elif self.user_role == 'investor':
             return {

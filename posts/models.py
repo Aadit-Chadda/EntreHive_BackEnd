@@ -25,6 +25,12 @@ class Post(models.Model):
         related_name='posts',
         help_text="Post author"
     )
+    university = models.ForeignKey(
+        'universities.University',
+        on_delete=models.CASCADE,
+        related_name='posts',
+        help_text="University associated with this post (derived from author's university)"
+    )
     
     # Post content
     content = models.TextField(
@@ -113,6 +119,14 @@ class Post(models.Model):
     def can_delete(self, user):
         """Check if a user can delete this post"""
         return user == self.author
+
+    
+    def save(self, *args, **kwargs):
+        """Override save to automatically set university from author's profile"""
+        if self.author and hasattr(self.author, 'profile') and self.author.profile.university:
+            self.university = self.author.profile.university
+        super().save(*args, **kwargs)
+
 
 
 class Comment(models.Model):

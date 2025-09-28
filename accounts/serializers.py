@@ -3,6 +3,7 @@ from dj_rest_auth.registration.serializers import RegisterSerializer
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from .models import UserProfile
+import re
 
 User = get_user_model()
 
@@ -84,6 +85,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
+    university_name = serializers.SerializerMethodField()
     role_specific_info = serializers.ReadOnlyField()
     
     class Meta:
@@ -91,7 +93,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'full_name',
             'first_name', 'last_name', 'user_role',
-            'profile_picture', 'bio', 'location', 'university',
+            'profile_picture', 'bio', 'location', 'university', 'university_name',
             'major', 'graduation_year',  # Student fields
             'department', 'research_interests',  # Professor fields
             'investment_focus', 'company',  # Investor fields
@@ -103,6 +105,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
     
     def get_full_name(self, obj):
         return obj.get_full_name()
+    
+    def get_university_name(self, obj):
+        """Return university name instead of UUID"""
+        return obj.university.name if obj.university else None
     
     def validate_user_role(self, value):
         """Validate user role"""
@@ -170,6 +176,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.SerializerMethodField()
+    university_name = serializers.SerializerMethodField()
     role_specific_info = serializers.SerializerMethodField()
     
     class Meta:
@@ -177,7 +184,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'full_name',
             'user_role', 'profile_picture', 'bio', 
-            'location', 'university',
+            'location', 'university', 'university_name',
             'linkedin_url', 'website_url', 'github_url',
             'role_specific_info', 'created_at'
         ]
@@ -191,6 +198,10 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             return obj.user.email
         return None
     
+    def get_university_name(self, obj):
+        """Return university name instead of UUID"""
+        return obj.university.name if obj.university else None
+    
     def get_role_specific_info(self, obj):
         """Return role-specific info for public viewing"""
         info = obj.role_specific_info
@@ -200,7 +211,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
 
 class ExtendedRegisterSerializer(CustomRegisterSerializer):
     """
-    Extended registration serializer that includes basic profile fields
+    Extended registration serializer that includes basic profile fields and university verification
     """
     user_role = serializers.ChoiceField(
         choices=UserProfile.ROLE_CHOICES,
@@ -209,7 +220,59 @@ class ExtendedRegisterSerializer(CustomRegisterSerializer):
     )
     bio = serializers.CharField(max_length=1000, required=False, allow_blank=True)
     location = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    university = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    university_id = serializers.UUIDField(required=False, allow_null=True)
+    verified_university = serializers.BooleanField(default=False, required=False)
+    
+    def validate(self, data):
+        """
+        Validate university verification for non-investors
+        """
+        data = super().validate(data)
+        
+        user_role = data.get('user_role', 'student')
+        email = data.get('email', '').lower()
+        university_id = data.get('university_id')
+        verified_university = data.get('verified_university', False)
+        
+        # Investors can bypass university verification
+        if user_role == 'investor':
+            return data
+        
+        # For students and professors, university verification is required
+        if user_role in ['student', 'professor']:
+            if not verified_university or not university_id:
+                # Extract domain for error message
+                domain = email.split('@')[1] if '@' in email else 'unknown'
+                raise serializers.ValidationError({
+                    'email': f'Email domain "{domain}" must be verified with a registered university. Please use your institutional email address.'
+                })
+            
+            # Verify the university exists
+            from universities.models import University
+            try:
+                university = University.objects.get(id=university_id)
+                
+                # Double-check domain verification
+                domain = email.split('@')[1] if '@' in email else ''
+                if not self._verify_domain_matches_university(domain, university):
+                    raise serializers.ValidationError({
+                        'email': f'Email domain does not match the selected university ({university.name})'
+                    })
+                    
+            except University.DoesNotExist:
+                raise serializers.ValidationError({
+                    'university_id': 'Selected university does not exist'
+                })
+        
+        return data
+    
+    def _verify_domain_matches_university(self, domain, university):
+        """Helper method to verify domain matches university"""
+        if not university.email_domain:
+            return False
+        
+        university_domain = university.email_domain.lower().replace('@', '')
+        return domain.lower() == university_domain
     
     def get_cleaned_data(self):
         """
@@ -220,7 +283,7 @@ class ExtendedRegisterSerializer(CustomRegisterSerializer):
             'user_role': self.validated_data.get('user_role', 'student'),
             'bio': self.validated_data.get('bio', ''),
             'location': self.validated_data.get('location', ''),
-            'university': self.validated_data.get('university', ''),
+            'university_id': self.validated_data.get('university_id'),
         })
         return data
     
@@ -235,9 +298,19 @@ class ExtendedRegisterSerializer(CustomRegisterSerializer):
         profile.user_role = self.cleaned_data.get('user_role', 'student')
         profile.bio = self.cleaned_data.get('bio', '')
         profile.location = self.cleaned_data.get('location', '')
-        profile.university = self.cleaned_data.get('university', '')
         profile.first_name = self.cleaned_data.get('first_name', '')
         profile.last_name = self.cleaned_data.get('last_name', '')
+        
+        # Set university if provided and verified
+        university_id = self.cleaned_data.get('university_id')
+        if university_id:
+            from universities.models import University
+            try:
+                university = University.objects.get(id=university_id)
+                profile.university = university
+            except University.DoesNotExist:
+                pass  # This should have been caught in validation
+        
         profile.save()
         
         return user

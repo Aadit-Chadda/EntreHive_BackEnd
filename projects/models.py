@@ -60,6 +60,14 @@ class Project(models.Model):
         help_text="Project owner"
     )
     
+    # University relationship
+    university = models.ForeignKey(
+        'universities.University',
+        on_delete=models.CASCADE,
+        related_name='projects',
+        help_text="University associated with this project (derived from owner's university)"
+    )
+    
     # Team members relationship (many-to-many)
     team_members = models.ManyToManyField(
         User,
@@ -182,6 +190,12 @@ class Project(models.Model):
         team_ids = list(self.team_members.values_list('id', flat=True))
         team_ids.append(self.owner.id)
         return User.objects.filter(id__in=team_ids)
+    
+    def save(self, *args, **kwargs):
+        """Override save to automatically set university from owner's profile"""
+        if self.owner and hasattr(self.owner, 'profile') and self.owner.profile.university:
+            self.university = self.owner.profile.university
+        super().save(*args, **kwargs)
 
 
 class ProjectInvitation(models.Model):
