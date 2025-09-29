@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import UserProfile
+from .models import UserProfile, Follow
 
 
 @admin.register(UserProfile)
@@ -48,3 +48,12 @@ class UserProfileAdmin(admin.ModelAdmin):
     def get_full_name(self, obj):
         return obj.get_full_name()
     get_full_name.short_description = 'Full Name'
+
+
+@admin.register(Follow)
+class FollowAdmin(admin.ModelAdmin):
+    list_display = ['follower', 'following', 'created_at']
+    list_filter = ['created_at']
+    search_fields = ['follower__username', 'following__username']
+    readonly_fields = ['created_at']
+    ordering = ['-created_at']

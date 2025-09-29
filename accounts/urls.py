@@ -13,6 +13,14 @@ urlpatterns = [
     path('profiles/stats/', views.profile_stats, name='profile_stats'),
     path('profiles/<str:username>/', views.PublicProfileView.as_view(), name='public_profile'),
     
+    # Follow endpoints
+    path('follow/<str:username>/', views.follow_user, name='follow_user'),
+    path('unfollow/<str:username>/', views.unfollow_user, name='unfollow_user'),
+    path('follow-status/<str:username>/', views.follow_status, name='follow_status'),
+    
+    # Search endpoints
+    path('search/users/', views.user_search, name='user_search'),
+    
     # Utility endpoints
     path('check-username/', views.check_username, name='check_username'),
     path('check-email/', views.check_email, name='check_email'),

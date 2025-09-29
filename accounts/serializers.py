@@ -87,6 +87,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     university_name = serializers.SerializerMethodField()
     role_specific_info = serializers.ReadOnlyField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+    is_followed_by = serializers.SerializerMethodField()
     
     class Meta:
         model = UserProfile
@@ -99,7 +103,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'investment_focus', 'company',  # Investor fields
             'linkedin_url', 'website_url', 'github_url',
             'is_profile_public', 'show_email',
-            'role_specific_info', 'created_at', 'updated_at'
+            'role_specific_info', 'created_at', 'updated_at',
+            'followers_count', 'following_count', 'is_following', 'is_followed_by'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -109,6 +114,28 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_university_name(self, obj):
         """Return university name instead of UUID"""
         return obj.university.name if obj.university else None
+    
+    def get_followers_count(self, obj):
+        """Return followers count"""
+        return obj.get_followers_count()
+    
+    def get_following_count(self, obj):
+        """Return following count"""
+        return obj.get_following_count()
+    
+    def get_is_following(self, obj):
+        """Check if current user is following this user"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and request.user != obj.user:
+            return obj.is_followed_by(request.user)
+        return False
+    
+    def get_is_followed_by(self, obj):
+        """Check if this user is followed by current user"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and request.user != obj.user:
+            return obj.is_following(request.user)
+        return False
     
     def validate_user_role(self, value):
         """Validate user role"""
@@ -178,6 +205,10 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     email = serializers.SerializerMethodField()
     university_name = serializers.SerializerMethodField()
     role_specific_info = serializers.SerializerMethodField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+    is_followed_by = serializers.SerializerMethodField()
     
     class Meta:
         model = UserProfile
@@ -186,7 +217,8 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             'user_role', 'profile_picture', 'bio', 
             'location', 'university', 'university_name',
             'linkedin_url', 'website_url', 'github_url',
-            'role_specific_info', 'created_at'
+            'role_specific_info', 'created_at',
+            'followers_count', 'following_count', 'is_following', 'is_followed_by'
         ]
     
     def get_full_name(self, obj):
@@ -207,6 +239,28 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         info = obj.role_specific_info
         # Filter out sensitive information if needed
         return info
+    
+    def get_followers_count(self, obj):
+        """Return followers count"""
+        return obj.get_followers_count()
+    
+    def get_following_count(self, obj):
+        """Return following count"""
+        return obj.get_following_count()
+    
+    def get_is_following(self, obj):
+        """Check if current user is following this user"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and request.user != obj.user:
+            return obj.is_followed_by(request.user)
+        return False
+    
+    def get_is_followed_by(self, obj):
+        """Check if this user is followed by current user"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and request.user != obj.user:
+            return obj.is_following(request.user)
+        return False
 
 
 class ExtendedRegisterSerializer(CustomRegisterSerializer):

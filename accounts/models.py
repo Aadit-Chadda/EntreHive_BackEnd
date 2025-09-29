@@ -115,6 +115,26 @@ class UserProfile(models.Model):
                 'company': self.company
             }
         return {}
+    
+    def get_followers_count(self):
+        """Return number of followers"""
+        return self.user.followers.count()
+    
+    def get_following_count(self):
+        """Return number of users this user is following"""
+        return self.user.following.count()
+    
+    def is_following(self, user):
+        """Check if this user is following another user"""
+        if not user or not user.is_authenticated:
+            return False
+        return self.user.following.filter(following=user).exists()
+    
+    def is_followed_by(self, user):
+        """Check if this user is followed by another user"""
+        if not user or not user.is_authenticated:
+            return False
+        return self.user.followers.filter(follower=user).exists()
 
 
 @receiver(post_save, sender=User)
@@ -133,3 +153,39 @@ def save_user_profile(sender, instance, **kwargs):
     """
     if hasattr(instance, 'profile'):
         instance.profile.save()
+
+
+class Follow(models.Model):
+    """
+    Follow relationship between users
+    """
+    follower = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='following'
+    )
+    following = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='followers'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('follower', 'following')
+        verbose_name = "Follow"
+        verbose_name_plural = "Follows"
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.follower.username} follows {self.following.username}"
+    
+    def clean(self):
+        """Prevent users from following themselves"""
+        from django.core.exceptions import ValidationError
+        if self.follower == self.following:
+            raise ValidationError("Users cannot follow themselves")
+    
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)

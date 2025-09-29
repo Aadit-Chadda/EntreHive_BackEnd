@@ -6,7 +6,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
-from .models import UserProfile
+from .models import UserProfile, Follow
 from .serializers import (
     UserProfileSerializer, 
     UserProfileCreateUpdateSerializer,
@@ -202,3 +202,138 @@ def delete_profile_picture(request):
             {'error': 'Profile not found'}, 
             status=status.HTTP_404_NOT_FOUND
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def follow_user(request, username):
+    """
+    Follow a user by username
+    """
+    try:
+        user_to_follow = get_object_or_404(User, username=username)
+        
+        # Prevent self-following
+        if request.user == user_to_follow:
+            return Response(
+                {'error': 'You cannot follow yourself'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if already following
+        follow_relationship, created = Follow.objects.get_or_create(
+            follower=request.user,
+            following=user_to_follow
+        )
+        
+        if created:
+            return Response(
+                {'message': f'You are now following {username}', 'following': True}, 
+                status=status.HTTP_201_CREATED
+            )
+        else:
+            return Response(
+                {'message': f'You are already following {username}', 'following': True}, 
+                status=status.HTTP_200_OK
+            )
+            
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'User not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def unfollow_user(request, username):
+    """
+    Unfollow a user by username
+    """
+    try:
+        user_to_unfollow = get_object_or_404(User, username=username)
+        
+        try:
+            follow_relationship = Follow.objects.get(
+                follower=request.user,
+                following=user_to_unfollow
+            )
+            follow_relationship.delete()
+            return Response(
+                {'message': f'You have unfollowed {username}', 'following': False}, 
+                status=status.HTTP_200_OK
+            )
+        except Follow.DoesNotExist:
+            return Response(
+                {'message': f'You are not following {username}', 'following': False}, 
+                status=status.HTTP_200_OK
+            )
+            
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'User not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def follow_status(request, username):
+    """
+    Check if the current user is following a specific user
+    """
+    try:
+        user_to_check = get_object_or_404(User, username=username)
+        
+        if request.user == user_to_check:
+            return Response(
+                {'following': False, 'message': 'Cannot follow yourself'}, 
+                status=status.HTTP_200_OK
+            )
+        
+        is_following = Follow.objects.filter(
+            follower=request.user,
+            following=user_to_check
+        ).exists()
+        
+        return Response(
+            {'following': is_following}, 
+            status=status.HTTP_200_OK
+        )
+        
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'User not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def user_search(request):
+    """
+    Search for users by username, name, or bio
+    """
+    search_query = request.GET.get('q', '').strip()
+    
+    if not search_query:
+        return Response(
+            {'results': [], 'message': 'Please provide a search query'}, 
+            status=status.HTTP_200_OK
+        )
+    
+    # Search only public profiles
+    profiles = UserProfile.objects.filter(
+        is_profile_public=True
+    ).filter(
+        Q(user__username__icontains=search_query) |
+        Q(first_name__icontains=search_query) |
+        Q(last_name__icontains=search_query) |
+        Q(bio__icontains=search_query)
+    ).order_by('-created_at')[:20]  # Limit to 20 results
+    
+    serializer = PublicUserProfileSerializer(profiles, many=True, context={'request': request})
+    return Response(
+        {'results': serializer.data, 'count': len(serializer.data)}, 
+        status=status.HTTP_200_OK
+    )
