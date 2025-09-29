@@ -381,11 +381,23 @@ class ProjectSummarySerializer(serializers.Serializer):
     status = serializers.CharField(read_only=True)
     visibility = serializers.CharField(read_only=True)
     preview_image = serializers.URLField(read_only=True)
+    banner_style = serializers.CharField(read_only=True)
+    banner_gradient = serializers.CharField(read_only=True)
+    banner_image = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField(read_only=True)
     team_count = serializers.SerializerMethodField()
     
     def get_team_count(self, obj):
         return obj.get_team_count()
+
+    def get_banner_image(self, obj):
+        if obj.banner_image:
+            request = self.context.get('request')
+            image_url = obj.banner_image.url
+            if request:
+                return request.build_absolute_uri(image_url)
+            return image_url
+        return None
 
 
 class PostSummarySerializer(serializers.Serializer):

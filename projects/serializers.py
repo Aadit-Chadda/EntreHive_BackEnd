@@ -57,12 +57,14 @@ class ProjectSerializer(serializers.ModelSerializer):
     team_count = serializers.SerializerMethodField()
     is_team_member = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
+    banner_image = serializers.ImageField(required=False, allow_null=True)
     
     class Meta:
         model = Project
         fields = [
             'id', 'title', 'owner', 'team_members', 'project_type', 'status',
             'summary', 'needs', 'categories', 'tags', 'preview_image',
+            'banner_style', 'banner_gradient', 'banner_image',
             'pitch_url', 'repo_url', 'visibility', 'created_at', 'updated_at',
             'team_count', 'is_team_member', 'can_edit'
         ]
@@ -92,12 +94,14 @@ class ProjectSerializer(serializers.ModelSerializer):
 
 class ProjectCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating projects"""
-    
+    banner_image = serializers.ImageField(required=False, allow_null=True)
+
     class Meta:
         model = Project
         fields = [
             'id', 'title', 'project_type', 'status', 'summary', 'needs',
-            'categories', 'tags', 'preview_image', 'pitch_url',
+            'categories', 'tags', 'preview_image', 'banner_style',
+            'banner_gradient', 'banner_image', 'pitch_url',
             'repo_url', 'visibility'
         ]
         read_only_fields = ['id']
@@ -111,12 +115,14 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
 
 class ProjectUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating projects"""
-    
+    banner_image = serializers.ImageField(required=False, allow_null=True)
+
     class Meta:
         model = Project
         fields = [
             'title', 'project_type', 'status', 'summary', 'needs',
-            'categories', 'tags', 'preview_image', 'pitch_url',
+            'categories', 'tags', 'preview_image', 'banner_style',
+            'banner_gradient', 'banner_image', 'pitch_url',
             'repo_url', 'visibility'
         ]
 

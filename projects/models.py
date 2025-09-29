@@ -32,6 +32,11 @@ class Project(models.Model):
         ('university', 'University'),
         ('public', 'Public'),
     ]
+
+    BANNER_STYLE_CHOICES = [
+        ('gradient', 'Gradient'),
+        ('image', 'Image'),
+    ]
     
     # Project needs
     NEED_CHOICES = [
@@ -120,6 +125,26 @@ class Project(models.Model):
         blank=True, 
         null=True,
         help_text="Preview image URL"
+    )
+
+    banner_style = models.CharField(
+        max_length=20,
+        choices=BANNER_STYLE_CHOICES,
+        default='gradient',
+        help_text="Display style for the project hero/banner"
+    )
+
+    banner_gradient = models.CharField(
+        max_length=50,
+        default='sunrise',
+        help_text="Identifier for the selected banner gradient"
+    )
+
+    banner_image = models.ImageField(
+        upload_to='project_banners/',
+        blank=True,
+        null=True,
+        help_text="Optional uploaded banner image"
     )
     
     pitch_url = models.URLField(

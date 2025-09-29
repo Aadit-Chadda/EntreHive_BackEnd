@@ -6,9 +6,10 @@ from datetime import timedelta
 import uuid
 
 
-class FeedItem(models.Model):
+class ContentScore(models.Model):
     """
-    Feed item model to represent curated content in user feeds
+    Lightweight model to cache base scores for content items
+    Eliminates need for per-user feed items
     """
     
     CONTENT_TYPE_CHOICES = [
@@ -17,23 +18,7 @@ class FeedItem(models.Model):
         ('university_announcement', 'University Announcement'),
     ]
     
-    FEED_TYPE_CHOICES = [
-        ('home', 'Home Feed'),
-        ('university', 'University Feed'),
-        ('public', 'Public Feed'),
-        ('trending', 'Trending Feed'),
-    ]
-    
-    # Core fields
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='feed_items',
-        help_text="User whose feed this item belongs to"
-    )
-    
-    # Content reference (polymorphic)
+    # Content reference
     content_type = models.CharField(
         max_length=30,
         choices=CONTENT_TYPE_CHOICES,
@@ -41,48 +26,47 @@ class FeedItem(models.Model):
     )
     content_id = models.UUIDField(help_text="ID of the content object")
     
-    # Feed categorization
-    feed_type = models.CharField(
-        max_length=20,
-        choices=FEED_TYPE_CHOICES,
-        default='home',
-        help_text="Which feed this item belongs to"
-    )
-    
-    # Curation data
-    score = models.FloatField(
+    # Base scores (not user-specific)
+    base_score = models.FloatField(
         default=0.0,
-        validators=[MinValueValidator(0.0), MaxValueValidator(100.0)],
-        help_text="Relevance score for this item (0-100)"
+        help_text="Base content quality score"
+    )
+    engagement_score = models.FloatField(
+        default=0.0,
+        help_text="Engagement-based score (likes, comments, etc.)"
+    )
+    recency_score = models.FloatField(
+        default=0.0,
+        help_text="Time-decay score"
+    )
+    trending_score = models.FloatField(
+        default=0.0,
+        help_text="Trending/viral score"
     )
     
-    # User interaction tracking
-    viewed = models.BooleanField(default=False, help_text="Whether user has viewed this item")
-    view_time = models.FloatField(
-        null=True, 
-        blank=True, 
-        help_text="Time spent viewing this item (in seconds)"
+    # Cache metadata
+    calculated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField(
+        help_text="When this score cache expires"
     )
-    clicked = models.BooleanField(default=False, help_text="Whether user has clicked this item")
-    
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        verbose_name = "Feed Item"
-        verbose_name_plural = "Feed Items"
-        ordering = ['-score', '-created_at']
-        unique_together = ('user', 'content_type', 'content_id', 'feed_type')
+        verbose_name = "Content Score"
+        verbose_name_plural = "Content Scores"
+        unique_together = ('content_type', 'content_id')
         indexes = [
-            models.Index(fields=['user', 'feed_type']),
-            models.Index(fields=['score']),
             models.Index(fields=['content_type', 'content_id']),
-            models.Index(fields=['created_at']),
+            models.Index(fields=['content_type', '-base_score']),
+            models.Index(fields=['-calculated_at']),
+            models.Index(fields=['expires_at']),
         ]
     
     def __str__(self):
-        return f"{self.user.username} - {self.content_type} {self.content_id} (score: {self.score})"
+        return f"{self.content_type} {self.content_id} (score: {self.base_score:.1f})"
+    
+    def is_expired(self):
+        """Check if score cache is expired"""
+        return timezone.now() > self.expires_at
     
     def get_content_object(self):
         """Get the actual content object"""
@@ -99,18 +83,80 @@ class FeedItem(models.Model):
             except Project.DoesNotExist:
                 return None
         return None
+
+
+class UserInteraction(models.Model):
+    """
+    Track user interactions with content (replaces FeedItem interaction tracking)
+    Much more lightweight - only stores actual interactions
+    """
     
-    def mark_viewed(self, view_time=None):
-        """Mark this feed item as viewed"""
-        self.viewed = True
-        if view_time:
-            self.view_time = view_time
-        self.save(update_fields=['viewed', 'view_time'])
+    ACTION_CHOICES = [
+        ('view', 'View'),
+        ('click', 'Click'),
+        ('like', 'Like'),
+        ('share', 'Share'),
+        ('comment', 'Comment'),
+    ]
     
-    def mark_clicked(self):
-        """Mark this feed item as clicked"""
-        self.clicked = True
-        self.save(update_fields=['clicked'])
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='content_interactions',
+        help_text="User who performed the interaction"
+    )
+    
+    # Content reference
+    content_type = models.CharField(
+        max_length=30,
+        choices=ContentScore.CONTENT_TYPE_CHOICES,
+        help_text="Type of content"
+    )
+    content_id = models.UUIDField(help_text="ID of the content object")
+    
+    # Interaction details
+    action = models.CharField(
+        max_length=20,
+        choices=ACTION_CHOICES,
+        help_text="Type of interaction"
+    )
+    
+    # Optional metadata
+    view_time = models.FloatField(
+        null=True, 
+        blank=True, 
+        help_text="Time spent viewing (for view actions)"
+    )
+    
+    # Feed context (where the interaction happened)
+    feed_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('home', 'Home Feed'),
+            ('university', 'University Feed'),
+            ('public', 'Public Feed'),
+            ('profile', 'Profile View'),
+            ('direct', 'Direct View'),
+        ],
+        null=True,
+        blank=True,
+        help_text="Context where interaction occurred"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "User Interaction"
+        verbose_name_plural = "User Interactions"
+        indexes = [
+            models.Index(fields=['user', 'content_type', 'content_id']),
+            models.Index(fields=['content_type', 'content_id', 'action']),
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['user', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} {self.action} {self.content_type} {self.content_id}"
 
 
 class FeedConfiguration(models.Model):
@@ -228,27 +274,41 @@ class TrendingTopic(models.Model):
         return f"#{self.topic} ({self.mention_count} mentions)"
 
 
-class FeedCache(models.Model):
+class TimelineFeedCache(models.Model):
     """
-    Cache model to store pre-computed feeds for performance
+    Lightweight cache for timeline-based feeds
+    Stores only content IDs and metadata, not full feed items
     """
+    
+    FEED_TYPE_CHOICES = [
+        ('home', 'Home Feed'),
+        ('university', 'University Feed'),
+        ('public', 'Public Feed'),
+        ('trending', 'Trending Feed'),
+    ]
     
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='feed_caches',
+        related_name='timeline_caches',
         help_text="User this cache belongs to"
     )
     feed_type = models.CharField(
         max_length=20,
-        choices=FeedItem.FEED_TYPE_CHOICES,
+        choices=FEED_TYPE_CHOICES,
         help_text="Type of feed cached"
     )
     
-    # Cached data
-    cached_items = models.JSONField(
+    # Lightweight cached data - just content references
+    cached_content = models.JSONField(
         default=list,
-        help_text="Cached feed item IDs in order"
+        help_text="List of {content_type, content_id, score} objects"
+    )
+    
+    # Pagination info
+    total_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Total available items for this feed"
     )
     
     # Cache metadata
@@ -261,24 +321,39 @@ class FeedCache(models.Model):
     )
     
     class Meta:
-        verbose_name = "Feed Cache"
-        verbose_name_plural = "Feed Caches"
+        verbose_name = "Timeline Feed Cache"
+        verbose_name_plural = "Timeline Feed Caches"
         unique_together = ('user', 'feed_type')
         indexes = [
             models.Index(fields=['user', 'feed_type']),
             models.Index(fields=['expires_at']),
+            models.Index(fields=['-last_refresh']),
         ]
     
     def __str__(self):
-        return f"{self.user.username} - {self.feed_type} cache"
+        return f"{self.user.username} - {self.feed_type} timeline cache"
     
     def is_expired(self):
         """Check if cache is expired"""
         return timezone.now() > self.expires_at
     
-    def refresh_cache(self, new_items, expiry_hours=1):
-        """Refresh the cache with new items"""
-        # Convert UUIDs to strings for JSON serialization
-        self.cached_items = [str(item) for item in new_items]
+    def refresh_cache(self, content_items, expiry_hours=1):
+        """Refresh the cache with new content items"""
+        # Store minimal data: {content_type, content_id, score}
+        self.cached_content = [
+            {
+                'content_type': item['content_type'],
+                'content_id': str(item['content_id']),
+                'score': item['score']
+            }
+            for item in content_items
+        ]
+        self.total_count = len(content_items)
         self.expires_at = timezone.now() + timedelta(hours=expiry_hours)
         self.save()
+    
+    def get_page(self, page=1, page_size=20):
+        """Get a specific page from cached content"""
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        return self.cached_content[start_idx:end_idx]

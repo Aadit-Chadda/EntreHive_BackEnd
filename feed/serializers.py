@@ -4,46 +4,57 @@ from posts.models import Post
 from projects.models import Project
 from posts.serializers import PostListSerializer
 from projects.serializers import ProjectSerializer
-from .models import FeedItem, FeedConfiguration, TrendingTopic
+from .models import ContentScore, UserInteraction, FeedConfiguration, TrendingTopic
 
 
-class FeedItemSerializer(serializers.ModelSerializer):
+class TimelineItemSerializer(serializers.Serializer):
     """
-    Serializer for feed items with embedded content
+    Serializer for timeline items (replaces FeedItemSerializer)
+    Works with dynamically generated timeline data
     """
+    content_type = serializers.CharField()
+    content_id = serializers.UUIDField()
+    score = serializers.FloatField()
     content = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = FeedItem
-        fields = [
-            'id', 'content_type', 'content_id', 'feed_type', 
-            'score', 'viewed', 'clicked', 'created_at', 'content'
-        ]
+    user_interactions = serializers.ListField(child=serializers.CharField(), read_only=True)
+    viewed = serializers.BooleanField(read_only=True)
+    clicked = serializers.BooleanField(read_only=True)
+    liked = serializers.BooleanField(read_only=True)
     
     def get_content(self, obj):
         """Get the serialized content object"""
-        content_obj = obj.get_content_object()
+        # Handle both dictionary and object formats for compatibility
+        if isinstance(obj, dict):
+            content_obj = obj.get('content')
+        else:
+            content_obj = getattr(obj, 'content', None)
+            
         if not content_obj:
             return None
             
-        if obj.content_type == 'post':
+        # Get content_type from obj
+        content_type = obj.get('content_type') if isinstance(obj, dict) else getattr(obj, 'content_type', None)
+            
+        if content_type == 'post':
             return PostListSerializer(content_obj, context=self.context).data
-        elif obj.content_type == 'project':
+        elif content_type == 'project':
             return ProjectSerializer(content_obj, context=self.context).data
         
         return None
 
 
-class CuratedFeedSerializer(serializers.Serializer):
+class TimelineFeedSerializer(serializers.Serializer):
     """
-    Serializer for curated feed response
+    Serializer for timeline feed response
     """
-    results = FeedItemSerializer(many=True)
+    results = TimelineItemSerializer(many=True)
     count = serializers.IntegerField()
-    next = serializers.URLField(allow_null=True)
-    previous = serializers.URLField(allow_null=True)
+    page = serializers.IntegerField()
+    page_size = serializers.IntegerField()
     has_next = serializers.BooleanField()
     has_previous = serializers.BooleanField()
+    next = serializers.URLField(allow_null=True)
+    previous = serializers.URLField(allow_null=True)
 
 
 class FeedConfigurationSerializer(serializers.ModelSerializer):
@@ -89,19 +100,47 @@ class TrendingTopicSerializer(serializers.ModelSerializer):
         ]
 
 
-class FeedInteractionSerializer(serializers.Serializer):
+class UserInteractionSerializer(serializers.ModelSerializer):
     """
-    Serializer for tracking feed interactions
+    Serializer for tracking user interactions with content
     """
-    feed_item_id = serializers.UUIDField()
-    action = serializers.ChoiceField(choices=['view', 'click', 'like', 'share'])
-    view_time = serializers.FloatField(required=False, allow_null=True)
     
-    def validate_feed_item_id(self, value):
-        """Validate that feed item exists and belongs to the user"""
-        user = self.context['request'].user
-        try:
-            feed_item = FeedItem.objects.get(id=value, user=user)
-            return value
-        except FeedItem.DoesNotExist:
-            raise serializers.ValidationError("Feed item not found or doesn't belong to you")
+    class Meta:
+        model = UserInteraction
+        fields = [
+            'content_type', 'content_id', 'action', 
+            'view_time', 'feed_type', 'created_at'
+        ]
+        read_only_fields = ['created_at']
+    
+    def validate(self, data):
+        """Validate that content exists and is accessible"""
+        content_type = data.get('content_type')
+        content_id = data.get('content_id')
+        
+        if content_type == 'post':
+            try:
+                Post.objects.get(id=content_id)
+            except Post.DoesNotExist:
+                raise serializers.ValidationError("Post not found")
+        elif content_type == 'project':
+            try:
+                Project.objects.get(id=content_id)
+            except Project.DoesNotExist:
+                raise serializers.ValidationError("Project not found")
+        
+        return data
+
+
+class ContentScoreSerializer(serializers.ModelSerializer):
+    """
+    Serializer for content scores (for admin/analytics)
+    """
+    
+    class Meta:
+        model = ContentScore
+        fields = [
+            'content_type', 'content_id', 'base_score', 
+            'engagement_score', 'recency_score', 'trending_score',
+            'calculated_at', 'expires_at'
+        ]

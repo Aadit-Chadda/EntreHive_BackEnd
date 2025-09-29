@@ -1,4 +1,4 @@
-from rest_framework import generics, status, permissions
+from rest_framework import generics, status, permissions, parsers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
@@ -25,6 +25,7 @@ class ProjectListCreateView(generics.ListCreateAPIView):
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = ProjectPagination
+    parser_classes = [parsers.JSONParser, parsers.MultiPartParser, parsers.FormParser]
     
     def get_queryset(self):
         """
@@ -114,6 +115,7 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile')
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [parsers.JSONParser, parsers.MultiPartParser, parsers.FormParser]
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -170,6 +172,28 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
             raise PermissionDenied("Only project owner can update the project.")
         
         serializer.save()
+    
+    def update(self, request, *args, **kwargs):
+        """
+        Override update to return full project data with relationships
+        """
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if getattr(instance, '_prefetched_objects_cache', None):
+            # If 'prefetch_related' has been applied to a queryset, we need to
+            # forcibly invalidate the prefetch cache on the instance.
+            instance._prefetched_objects_cache = {}
+
+        # Refresh the instance from database to get updated data
+        instance.refresh_from_db()
+        
+        # Return full project data using ProjectSerializer
+        output_serializer = ProjectSerializer(instance, context={'request': request})
+        return Response(output_serializer.data)
     
     def perform_destroy(self, instance):
         """
