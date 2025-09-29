@@ -38,14 +38,13 @@ class ProjectListCreateView(generics.ListCreateAPIView):
         # 2. Projects they're team members of (any visibility)
         # 3. Public projects
         # 4. University projects if they're from same university
-        # 5. Cross-university projects
         # Note: Private projects are only visible to owner and team members
         
-        visibility_filter = Q(visibility='public') | Q(visibility='cross_university')
+        visibility_filter = Q(visibility='public')
         
-        # Add university filter if user has university info
+        # Add university filter if user has university info - only show university projects from same university
         if hasattr(user, 'profile') and user.profile.university:
-            visibility_filter |= Q(visibility='university')
+            visibility_filter |= Q(visibility='university', university=user.profile.university)
         
         # Add user's own projects and projects they're team members of (including private)
         user_projects_filter = Q(owner=user) | Q(team_members=user)
@@ -154,14 +153,10 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
         if project.visibility == 'public':
             return True
         
-        # Cross-university projects are viewable by all authenticated users
-        if project.visibility == 'cross_university':
-            return True
-        
         # University projects are viewable by users from same university
         if project.visibility == 'university':
-            if hasattr(user, 'profile') and hasattr(project.owner, 'profile'):
-                return user.profile.university == project.owner.profile.university
+            if hasattr(user, 'profile') and user.profile.university:
+                return project.university == user.profile.university
         
         return False
     
@@ -210,17 +205,15 @@ class UserProjectsView(generics.ListAPIView):
         # 2. Projects they're team members of (any visibility) 
         # 3. Public projects
         # 4. University projects (if same university)
-        # 5. Cross-university projects
         # Note: Private projects are only visible to owner and team members
         
         if current_user != target_user:
             # Filter out private projects unless current user is a team member
-            visibility_filter = Q(visibility='public') | Q(visibility='cross_university')
+            visibility_filter = Q(visibility='public')
             
             # Add university filter if users are from same university
-            if (hasattr(current_user, 'profile') and hasattr(target_user, 'profile') and 
-                current_user.profile.university == target_user.profile.university):
-                visibility_filter |= Q(visibility='university')
+            if (hasattr(current_user, 'profile') and current_user.profile.university):
+                visibility_filter |= Q(visibility='university', university=current_user.profile.university)
             
             # Add projects where current user is owner or team member (including private)
             user_projects_filter = Q(owner=current_user) | Q(team_members=current_user)

@@ -30,7 +30,6 @@ class Project(models.Model):
     VISIBILITY_CHOICES = [
         ('private', 'Private'),
         ('university', 'University'),
-        ('cross_university', 'Cross University'),
         ('public', 'Public'),
     ]
     

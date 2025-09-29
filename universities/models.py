@@ -121,7 +121,7 @@ class University(models.Model):
         # Update project count
         self.project_count = Project.objects.filter(
             owner__profile__university=self,
-            visibility__in=['university', 'cross_university', 'public']
+            visibility__in=['university', 'public']
         ).count()
         
         self.save()

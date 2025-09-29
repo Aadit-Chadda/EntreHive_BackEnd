@@ -27,7 +27,11 @@ class UserBasicSerializer(serializers.ModelSerializer):
                     'full_name': obj.profile.get_full_name(),
                     'profile_picture': obj.profile.profile_picture.url if obj.profile.profile_picture else None,
                     'user_role': obj.profile.user_role,
-                    'university': obj.profile.university,
+                    'university': {
+                        'id': str(obj.profile.university.id),
+                        'name': obj.profile.university.name,
+                        'short_name': obj.profile.university.short_name
+                    } if obj.profile.university else None,
                     'bio': obj.profile.bio,
                 }
         except Exception as e:

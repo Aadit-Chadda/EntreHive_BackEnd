@@ -12,16 +12,23 @@ class AuthorSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='profile.get_full_name', read_only=True)
     profile_picture = serializers.SerializerMethodField()
     user_role = serializers.CharField(source='profile.user_role', read_only=True)
+    university_name = serializers.SerializerMethodField()
+    university_id = serializers.CharField(source='profile.university.id', read_only=True)
     
     class Meta:
         model = User
-        fields = ['id', 'username', 'full_name', 'profile_picture', 'user_role']
+        fields = ['id', 'username', 'full_name', 'profile_picture', 'user_role', 'university_name', 'university_id']
     
     def get_profile_picture(self, obj):
         if hasattr(obj, 'profile') and obj.profile.profile_picture:
             request = self.context.get('request')
             if request:
                 return request.build_absolute_uri(obj.profile.profile_picture.url)
+        return None
+    
+    def get_university_name(self, obj):
+        if hasattr(obj, 'profile') and obj.profile.university:
+            return obj.profile.university.name
         return None
 
 

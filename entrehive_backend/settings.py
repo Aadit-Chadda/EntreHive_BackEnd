@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     'projects',
     'posts',
     'universities',
+    'feed',
 ]
 
 
