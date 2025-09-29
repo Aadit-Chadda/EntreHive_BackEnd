@@ -61,6 +61,32 @@ class UserProfile(models.Model):
     website_url = models.URLField(blank=True, null=True, help_text="Personal website URL")
     github_url = models.URLField(blank=True, null=True, help_text="GitHub profile URL")
     
+    # Profile banner options (similar to projects)
+    BANNER_STYLE_CHOICES = [
+        ('gradient', 'Gradient'),
+        ('image', 'Image'),
+    ]
+    
+    banner_style = models.CharField(
+        max_length=20,
+        choices=BANNER_STYLE_CHOICES,
+        default='gradient',
+        help_text="Display style for the profile banner"
+    )
+
+    banner_gradient = models.CharField(
+        max_length=50,
+        default='sunrise',
+        help_text="Identifier for the selected banner gradient"
+    )
+
+    banner_image = models.ImageField(
+        upload_to='profile_banners/',
+        blank=True,
+        null=True,
+        help_text="Optional uploaded banner image"
+    )
+    
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

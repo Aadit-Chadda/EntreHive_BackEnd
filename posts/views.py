@@ -1,9 +1,10 @@
 from rest_framework import viewsets, status, permissions, filters
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404
+import re
 from .models import Post, Comment, Like, PostShare
 from .serializers import (
     PostSerializer, PostListSerializer, CommentSerializer, 
@@ -313,3 +314,115 @@ class LikeViewSet(viewsets.ReadOnlyModelViewSet):
                 post_id=post_id
             ).select_related('user', 'user__profile')
         return Like.objects.none()
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticatedOrReadOnly])
+def post_search(request):
+    """
+    Search for posts by content, author, or hashtags
+    """
+    search_query = request.GET.get('q', '').strip()
+    
+    if not search_query:
+        return Response(
+            {'results': [], 'message': 'Please provide a search query'}, 
+            status=status.HTTP_200_OK
+        )
+    
+    user = request.user
+    
+    # Base queryset with proper permissions
+    queryset = Post.objects.select_related('author', 'author__profile').prefetch_related(
+        'tagged_projects', 'likes', 'comments'
+    ).annotate(
+        likes_count=Count('likes', distinct=True),
+        comments_count=Count('comments', distinct=True)
+    )
+    
+    # Apply visibility filtering
+    if user.is_authenticated:
+        user_university = getattr(user.profile, 'university', None) if hasattr(user, 'profile') else None
+        
+        queryset = queryset.filter(
+            Q(visibility='public') |
+            Q(author=user) |
+            (Q(visibility='university') & Q(author__profile__university=user_university) if user_university else Q(pk=None))
+        )
+    else:
+        queryset = queryset.filter(visibility='public')
+    
+    # Search functionality
+    search_filters = Q()
+    
+    # Check if it's a hashtag search
+    if search_query.startswith('#'):
+        hashtag = search_query[1:]
+        search_filters |= Q(content__icontains=f'#{hashtag}')
+    else:
+        # General search across content, author info, and tagged projects
+        search_filters |= (
+            Q(content__icontains=search_query) |
+            Q(author__username__icontains=search_query) |
+            Q(author__profile__first_name__icontains=search_query) |
+            Q(author__profile__last_name__icontains=search_query) |
+            Q(tagged_projects__title__icontains=search_query) |
+            Q(tagged_projects__categories__icontains=search_query) |
+            Q(tagged_projects__tags__icontains=search_query)
+        )
+    
+    queryset = queryset.filter(search_filters).distinct().order_by('-created_at')[:50]  # Limit to 50 results
+    
+    serializer = PostListSerializer(queryset, many=True, context={'request': request})
+    return Response(
+        {'results': serializer.data, 'count': len(serializer.data)}, 
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticatedOrReadOnly])
+def hashtag_search(request):
+    """
+    Extract and search for hashtags from posts
+    """
+    search_query = request.GET.get('q', '').strip()
+    
+    if not search_query:
+        return Response(
+            {'results': [], 'message': 'Please provide a search query'}, 
+            status=status.HTTP_200_OK
+        )
+    
+    user = request.user
+    
+    # Base queryset with proper permissions
+    queryset = Post.objects.select_related('author', 'author__profile')
+    
+    # Apply visibility filtering
+    if user.is_authenticated:
+        user_university = getattr(user.profile, 'university', None) if hasattr(user, 'profile') else None
+        
+        queryset = queryset.filter(
+            Q(visibility='public') |
+            Q(author=user) |
+            (Q(visibility='university') & Q(author__profile__university=user_university) if user_university else Q(pk=None))
+        )
+    else:
+        queryset = queryset.filter(visibility='public')
+    
+    # Extract hashtags from all posts
+    all_hashtags = set()
+    for post in queryset:
+        # Extract hashtags from post content
+        hashtags_in_content = re.findall(r'#(\w+)', post.content)
+        all_hashtags.update(hashtags_in_content)
+    
+    # Filter hashtags based on search query
+    matching_hashtags = [tag for tag in all_hashtags if search_query.lower() in tag.lower()]
+    matching_hashtags = sorted(matching_hashtags, key=lambda x: x.lower())[:20]  # Limit to 20 results
+    
+    return Response(
+        {'results': matching_hashtags, 'count': len(matching_hashtags)}, 
+        status=status.HTTP_200_OK
+    )

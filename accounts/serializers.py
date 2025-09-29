@@ -102,6 +102,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'department', 'research_interests',  # Professor fields
             'investment_focus', 'company',  # Investor fields
             'linkedin_url', 'website_url', 'github_url',
+            'banner_style', 'banner_gradient', 'banner_image',  # Banner fields
             'is_profile_public', 'show_email',
             'role_specific_info', 'created_at', 'updated_at',
             'followers_count', 'following_count', 'is_following', 'is_followed_by'
@@ -158,6 +159,7 @@ class UserProfileCreateUpdateSerializer(serializers.ModelSerializer):
     """
     Serializer for creating/updating user profiles with role-specific validation
     """
+    banner_image = serializers.ImageField(required=False, allow_null=True)
     
     class Meta:
         model = UserProfile
@@ -168,30 +170,52 @@ class UserProfileCreateUpdateSerializer(serializers.ModelSerializer):
             'department', 'research_interests',  # Professor fields
             'investment_focus', 'company',  # Investor fields
             'linkedin_url', 'website_url', 'github_url',
+            'banner_style', 'banner_gradient', 'banner_image',  # Banner fields
             'is_profile_public', 'show_email'
         ]
     
     def validate(self, data):
         """Cross-field validation based on user role"""
+        print(f"Profile validation data: {data}")  # Debug
+        print(f"Fields being updated: {list(data.keys())}")  # Debug
+        
+        # Skip validation if we're only updating banner fields
+        banner_only_fields = {'banner_style', 'banner_gradient', 'banner_image'}
+        if set(data.keys()).issubset(banner_only_fields):
+            print("Banner-only update, skipping role validation")
+            return data
+        
         user_role = data.get('user_role', self.instance.user_role if self.instance else 'student')
         
-        # Helper function to check if a field value exists (either in data or instance)
-        def has_value(field_name):
-            return (data.get(field_name) or 
-                   (self.instance and getattr(self.instance, field_name, None)))
+        # Helper function to check if a field has a meaningful value
+        def has_meaningful_value(field_name):
+            value = data.get(field_name)
+            if value and str(value).strip():  # Check for non-empty string
+                return True
+            # Check instance if no meaningful value in data
+            if self.instance:
+                instance_value = getattr(self.instance, field_name, None)
+                return instance_value and str(instance_value).strip()
+            return False
         
-        # Role-specific validation
-        if user_role == 'student':
-            if data.get('major') and not has_value('university'):
+        # Helper function to check if university exists
+        def has_university():
+            return (has_meaningful_value('university') or 
+                   (self.instance and self.instance.university))
+        
+        # Role-specific validation - only validate if we're updating relevant fields
+        if user_role == 'student' and 'major' in data:
+            if has_meaningful_value('major') and not has_university():
                 raise serializers.ValidationError("University is required when major is specified")
         
-        elif user_role == 'professor':
-            if data.get('department') and not has_value('university'):
+        elif user_role == 'professor' and 'department' in data:
+            if has_meaningful_value('department') and not has_university():
                 raise serializers.ValidationError("University is required when department is specified")
         
-        elif user_role == 'investor':
-            if data.get('investment_focus') and not has_value('company'):
-                raise serializers.ValidationError("Company is recommended when investment focus is specified")
+        elif user_role == 'investor' and 'investment_focus' in data:
+            if has_meaningful_value('investment_focus') and not has_meaningful_value('company'):
+                # This is just a recommendation, not a hard requirement
+                pass
         
         return data
 

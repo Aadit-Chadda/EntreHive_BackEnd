@@ -20,6 +20,7 @@ urlpatterns = [
     
     # Search endpoints
     path('search/users/', views.user_search, name='user_search'),
+    path('search/', views.simple_comprehensive_search, name='comprehensive_search'),
     
     # Utility endpoints
     path('check-username/', views.check_username, name='check_username'),

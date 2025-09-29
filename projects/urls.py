@@ -19,4 +19,8 @@ urlpatterns = [
     path('<uuid:project_id>/invitations/', views.ProjectInvitationListCreateView.as_view(), name='project-invitations'),
     path('invitations/me/', views.UserInvitationsView.as_view(), name='my-invitations'),
     path('invitations/<uuid:invitation_id>/respond/', views.respond_to_invitation, name='respond-invitation'),
+    
+    # Search endpoints
+    path('search/', views.project_search, name='project-search'),
+    path('categories/search/', views.categories_search, name='categories-search'),
 ]

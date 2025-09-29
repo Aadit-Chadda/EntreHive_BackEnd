@@ -407,3 +407,141 @@ def respond_to_invitation(request, invitation_id):
         {'error': 'Invalid action or invitation cannot be processed'},
         status=status.HTTP_400_BAD_REQUEST
     )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticatedOrReadOnly])
+def project_search(request):
+    """
+    Search for projects by title, description, categories, tags, or needs
+    """
+    search_query = request.GET.get('q', '').strip()
+    
+    if not search_query:
+        return Response(
+            {'results': [], 'message': 'Please provide a search query'}, 
+            status=status.HTTP_200_OK
+        )
+    
+    user = request.user
+    
+    # Base queryset with proper permissions (same logic as ProjectListCreateView)
+    queryset = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile')
+    
+    # Apply visibility filtering
+    if user.is_authenticated:
+        visibility_filter = Q(visibility='public')
+        
+        # Add university filter if user has university info
+        if hasattr(user, 'profile') and user.profile.university:
+            visibility_filter |= Q(visibility='university', university=user.profile.university)
+        
+        # Add user's own projects and projects they're team members of
+        user_projects_filter = Q(owner=user) | Q(team_members=user)
+        final_filter = visibility_filter | user_projects_filter
+        queryset = queryset.filter(final_filter)
+    else:
+        # Only show public projects for unauthenticated users
+        queryset = queryset.filter(visibility='public')
+    
+    # Search functionality - comprehensive search across all relevant fields
+    search_filters = Q()
+    
+    # Basic text search
+    search_filters |= (
+        Q(title__icontains=search_query) |
+        Q(summary__icontains=search_query) |
+        Q(owner__username__icontains=search_query) |
+        Q(owner__profile__first_name__icontains=search_query) |
+        Q(owner__profile__last_name__icontains=search_query) |
+        Q(team_members__username__icontains=search_query) |
+        Q(team_members__profile__first_name__icontains=search_query) |
+        Q(team_members__profile__last_name__icontains=search_query)
+    )
+    
+    # Search in JSON fields (categories, tags, needs)
+    # Note: For PostgreSQL, you might want to use __icontains for JSON fields
+    # For SQLite, we'll search the JSON field as text
+    search_filters |= (
+        Q(categories__icontains=search_query) |
+        Q(tags__icontains=search_query) |
+        Q(needs__icontains=search_query)
+    )
+    
+    # Project type and status search
+    project_types = [choice[0] for choice in Project.PROJECT_TYPE_CHOICES if search_query.lower() in choice[1].lower()]
+    if project_types:
+        search_filters |= Q(project_type__in=project_types)
+    
+    status_choices = [choice[0] for choice in Project.STATUS_CHOICES if search_query.lower() in choice[1].lower()]
+    if status_choices:
+        search_filters |= Q(status__in=status_choices)
+    
+    queryset = queryset.filter(search_filters).distinct().order_by('-created_at')[:50]  # Limit to 50 results
+    
+    serializer = ProjectSerializer(queryset, many=True, context={'request': request})
+    return Response(
+        {'results': serializer.data, 'count': len(serializer.data)}, 
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticatedOrReadOnly])
+def categories_search(request):
+    """
+    Search for project categories and tags
+    """
+    search_query = request.GET.get('q', '').strip()
+    
+    if not search_query:
+        return Response(
+            {'results': [], 'message': 'Please provide a search query'}, 
+            status=status.HTTP_200_OK
+        )
+    
+    user = request.user
+    
+    # Base queryset with proper permissions
+    queryset = Project.objects.select_related('owner__profile')
+    
+    # Apply visibility filtering
+    if user.is_authenticated:
+        visibility_filter = Q(visibility='public')
+        
+        if hasattr(user, 'profile') and user.profile.university:
+            visibility_filter |= Q(visibility='university', university=user.profile.university)
+        
+        user_projects_filter = Q(owner=user) | Q(team_members=user)
+        final_filter = visibility_filter | user_projects_filter
+        queryset = queryset.filter(final_filter)
+    else:
+        queryset = queryset.filter(visibility='public')
+    
+    # Extract all categories and tags
+    all_categories = set()
+    all_tags = set()
+    
+    for project in queryset:
+        if project.categories:
+            all_categories.update(project.categories)
+        if project.tags:
+            all_tags.update(project.tags)
+    
+    # Filter based on search query
+    matching_categories = [cat for cat in all_categories if search_query.lower() in cat.lower()]
+    matching_tags = [tag for tag in all_tags if search_query.lower() in tag.lower()]
+    
+    # Combine and sort results
+    results = {
+        'categories': sorted(matching_categories, key=lambda x: x.lower())[:20],
+        'tags': sorted(matching_tags, key=lambda x: x.lower())[:20]
+    }
+    
+    return Response(
+        {
+            'results': results, 
+            'count': len(matching_categories) + len(matching_tags)
+        }, 
+        status=status.HTTP_200_OK
+    )

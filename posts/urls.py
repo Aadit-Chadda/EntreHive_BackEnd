@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import PostViewSet, CommentViewSet, LikeViewSet
+from .views import PostViewSet, CommentViewSet, LikeViewSet, post_search, hashtag_search
 
 # Main router for posts
 router = DefaultRouter()
@@ -22,4 +22,8 @@ urlpatterns = [
     path('posts/<uuid:post_pk>/likes/', LikeViewSet.as_view({
         'get': 'list'
     }), name='post-likes-list'),
+    
+    # Search endpoints
+    path('search/', post_search, name='post-search'),
+    path('hashtags/search/', hashtag_search, name='hashtag-search'),
 ]

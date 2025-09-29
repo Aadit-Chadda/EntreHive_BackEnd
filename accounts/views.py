@@ -2,7 +2,7 @@ from rest_framework import status, generics, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
@@ -24,7 +24,7 @@ class UserProfileDetailView(generics.RetrieveUpdateAPIView):
     """
     serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]
-    # Support both JSON and file uploads
+    parser_classes = [JSONParser, MultiPartParser, FormParser]  # Support JSON and file uploads
     
     def get_object(self):
         # Get or create profile for the authenticated user
@@ -43,7 +43,7 @@ class ProfileUpdateView(generics.UpdateAPIView):
     """
     serializer_class = UserProfileCreateUpdateSerializer
     permission_classes = [IsAuthenticated]
-    # Support both JSON and file uploads
+    parser_classes = [JSONParser, MultiPartParser, FormParser]  # Support JSON and file uploads
     
     def get_object(self):
         profile, created = UserProfile.objects.get_or_create(user=self.request.user)
@@ -337,3 +337,105 @@ def user_search(request):
         {'results': serializer.data, 'count': len(serializer.data)}, 
         status=status.HTTP_200_OK
     )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def simple_comprehensive_search(request):
+    """
+    Comprehensive search that uses existing search endpoints
+    """
+    search_query = request.GET.get('q', '').strip()
+    search_type = request.GET.get('type', 'all')
+    
+    if not search_query:
+        return Response({
+            'users': [],
+            'posts': [],
+            'projects': [],
+            'hashtags': [],
+            'message': 'Please provide a search query'
+        }, status=status.HTTP_200_OK)
+    
+    results = {
+        'users': [],
+        'posts': [],
+        'projects': [],
+        'hashtags': []
+    }
+    
+    # Search Users
+    if search_type in ['all', 'users']:
+        try:
+            user_profiles = UserProfile.objects.filter(
+                is_profile_public=True
+            ).filter(
+                Q(user__username__icontains=search_query) |
+                Q(first_name__icontains=search_query) |
+                Q(last_name__icontains=search_query) |
+                Q(bio__icontains=search_query)
+            ).order_by('-created_at')[:10]
+            
+            user_serializer = PublicUserProfileSerializer(user_profiles, many=True, context={'request': request})
+            results['users'] = user_serializer.data
+        except Exception as e:
+            print(f"User search error: {e}")
+            results['users'] = []
+
+    # Search Projects using existing view
+    if search_type in ['all', 'projects']:
+        try:
+            from django.test import RequestFactory
+            from projects.views import project_search
+            
+            factory = RequestFactory()
+            project_request = factory.get('/api/projects/search/', {'q': search_query})
+            project_request.user = request.user
+            
+            project_response = project_search(project_request)
+            if hasattr(project_response, 'data') and project_response.data:
+                results['projects'] = project_response.data.get('results', [])[:10]
+        except Exception as e:
+            print(f"Project search error: {e}")
+            results['projects'] = []
+
+    # Search Posts using existing view
+    if search_type in ['all', 'posts']:
+        try:
+            from django.test import RequestFactory
+            from posts.views import post_search
+            
+            factory = RequestFactory()
+            post_request = factory.get('/api/search/', {'q': search_query})
+            post_request.user = request.user
+            
+            post_response = post_search(post_request)
+            if hasattr(post_response, 'data') and post_response.data:
+                results['posts'] = post_response.data.get('results', [])[:10]
+        except Exception as e:
+            print(f"Post search error: {e}")
+            results['posts'] = []
+
+    # Search Hashtags using existing view
+    if search_type in ['all', 'hashtags']:
+        try:
+            from django.test import RequestFactory
+            from posts.views import hashtag_search
+            
+            factory = RequestFactory()
+            hashtag_request = factory.get('/api/hashtags/search/', {'q': search_query})
+            hashtag_request.user = request.user
+            
+            hashtag_response = hashtag_search(hashtag_request)
+            if hasattr(hashtag_response, 'data') and hashtag_response.data:
+                results['hashtags'] = hashtag_response.data.get('hashtags', [])[:10]
+        except Exception as e:
+            print(f"Hashtag search error: {e}")
+            results['hashtags'] = []
+
+    return Response({
+        **results,
+        'total_count': len(results['users']) + len(results['projects']) + len(results['posts']) + len(results['hashtags']),
+        'search_query': search_query,
+        'search_type': search_type
+    }, status=status.HTTP_200_OK)
