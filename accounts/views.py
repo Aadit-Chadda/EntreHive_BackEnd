@@ -29,12 +29,45 @@ class UserProfileDetailView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         # Get or create profile for the authenticated user
         profile, created = UserProfile.objects.get_or_create(user=self.request.user)
+        print(f"=== BACKEND DEBUG: UserProfileDetailView.get_object ===")
+        print(f"User: {self.request.user}")
+        print(f"Profile ID: {profile.id}")
+        print(f"Profile created: {created}")
         return profile
     
     def get_serializer_class(self):
-        if self.request.method in ['PUT', 'PATCH']:
+        method = self.request.method
+        print(f"=== BACKEND DEBUG: UserProfileDetailView.get_serializer_class ===")
+        print(f"HTTP Method: {method}")
+        if method in ['PUT', 'PATCH']:
+            print("Using UserProfileCreateUpdateSerializer")
             return UserProfileCreateUpdateSerializer
+        print("Using UserProfileSerializer")
         return UserProfileSerializer
+    
+    def update(self, request, *args, **kwargs):
+        print("=" * 60)
+        print("=== BACKEND DEBUG: UserProfileDetailView.update START ===")
+        print("=" * 60)
+        print(f"Request method: {request.method}")
+        print(f"Request content type: {request.content_type}")
+        print(f"Request data: {request.data}")
+        print(f"Request FILES: {request.FILES}")
+        print(f"User: {request.user}")
+        
+        try:
+            result = super().update(request, *args, **kwargs)
+            print("=== BACKEND DEBUG: UserProfileDetailView.update SUCCESS ===")
+            print(f"Response status: {result.status_code}")
+            print(f"Response data: {result.data}")
+            return result
+        except Exception as e:
+            print("=== BACKEND DEBUG: UserProfileDetailView.update ERROR ===")
+            print(f"Exception type: {type(e)}")
+            print(f"Exception message: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            raise
 
 
 class ProfileUpdateView(generics.UpdateAPIView):
