@@ -260,6 +260,14 @@ def follow_user(request, username):
         )
         
         if created:
+            # Create notification for the followed user
+            try:
+                from notifications.models import Notification
+                Notification.create_follow_notification(request.user, user_to_follow)
+            except Exception as e:
+                # Log the error but don't fail the follow action
+                print(f"Failed to create follow notification: {e}")
+            
             return Response(
                 {'message': f'You are now following {username}', 'following': True}, 
                 status=status.HTTP_201_CREATED
