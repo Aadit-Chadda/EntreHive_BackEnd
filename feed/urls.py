@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import TimelineFeedViewSet, FeedConfigurationViewSet, TrendingTopicViewSet
+from . import investor_views
 
 # Create router for the feed app
 router = DefaultRouter()
@@ -20,4 +21,9 @@ urlpatterns = [
     path('feed/university/', TimelineFeedViewSet.as_view({'get': 'university'}), name='feed-university'),
     path('feed/public/', TimelineFeedViewSet.as_view({'get': 'public'}), name='feed-public'),
     path('feed/track_interaction/', TimelineFeedViewSet.as_view({'post': 'track_interaction'}), name='feed-track'),
+    
+    # Investor feed endpoints
+    path('feed/investor/', investor_views.investor_feed, name='investor-feed'),
+    path('feed/investor/topics/', investor_views.investor_topics, name='investor-topics'),
+    path('feed/investor/stats/', investor_views.investor_stats, name='investor-stats'),
 ]
