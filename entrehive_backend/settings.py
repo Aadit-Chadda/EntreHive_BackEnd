@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     'universities',
     'feed',
     'notifications',
+    'contact',
 ]
 
 
