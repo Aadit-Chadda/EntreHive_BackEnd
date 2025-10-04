@@ -93,6 +93,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     is_followed_by = serializers.SerializerMethodField()
     profile_picture = serializers.SerializerMethodField()
     banner_image = serializers.SerializerMethodField()
+    is_staff = serializers.BooleanField(source='user.is_staff', read_only=True)
+    is_superuser = serializers.BooleanField(source='user.is_superuser', read_only=True)
     
     class Meta:
         model = UserProfile
@@ -107,9 +109,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'banner_style', 'banner_gradient', 'banner_image',  # Banner fields
             'is_profile_public', 'show_email',
             'role_specific_info', 'created_at', 'updated_at',
-            'followers_count', 'following_count', 'is_following', 'is_followed_by'
+            'followers_count', 'following_count', 'is_following', 'is_followed_by',
+            'is_staff', 'is_superuser'  # Django admin fields
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'is_staff', 'is_superuser']
     
     def get_full_name(self, obj):
         return obj.get_full_name()

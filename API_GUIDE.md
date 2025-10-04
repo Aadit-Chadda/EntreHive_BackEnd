@@ -1563,4 +1563,586 @@ const sharePost = async (postId) => {
 
 ---
 
+## 🔔 Notifications API
+
+### 1. Get Notifications
+
+**Endpoint:** `GET /api/notifications/`
+
+**Description:** Get paginated list of user's notifications.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Query Parameters:**
+- `page` - Page number
+- `page_size` - Items per page (default: 20)
+- `read` - Filter by read status (true/false)
+
+**Success Response (200):**
+```json
+{
+  "count": 25,
+  "next": "http://localhost:8000/api/notifications/?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "notification_type": "like",
+      "actor": {
+        "id": 2,
+        "username": "janedoe",
+        "full_name": "Jane Doe",
+        "profile_picture": "http://localhost:8000/media/profile_pictures/jane.jpg"
+      },
+      "target_type": "post",
+      "target_id": "550e8400-e29b-41d4-a716-446655440000",
+      "message": "liked your post",
+      "read": false,
+      "created_at": "2025-10-04T12:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 2. Mark Notification as Read
+
+**Endpoint:** `POST /api/notifications/{notification_id}/mark_as_read/`
+
+**Description:** Mark a specific notification as read.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (200):**
+```json
+{
+  "message": "Notification marked as read"
+}
+```
+
+---
+
+### 3. Mark All Notifications as Read
+
+**Endpoint:** `POST /api/notifications/mark_all_as_read/`
+
+**Description:** Mark all user's notifications as read.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (200):**
+```json
+{
+  "message": "All notifications marked as read",
+  "updated_count": 5
+}
+```
+
+---
+
+### 4. Get Unread Count
+
+**Endpoint:** `GET /api/notifications/unread_count/`
+
+**Description:** Get count of unread notifications.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (200):**
+```json
+{
+  "unread_count": 5
+}
+```
+
+---
+
+### 5. Delete Notification
+
+**Endpoint:** `DELETE /api/notifications/{notification_id}/`
+
+**Description:** Delete a specific notification.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (204):** No content
+
+---
+
+### 6. Get Follow Suggestions
+
+**Endpoint:** `GET /api/notifications/follow-suggestions/`
+
+**Description:** Get suggested users to follow based on university and mutual connections.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (200):**
+```json
+{
+  "suggestions": [
+    {
+      "id": 3,
+      "username": "alex_developer",
+      "full_name": "Alex Developer",
+      "profile_picture": null,
+      "user_role": "student",
+      "university_name": "Stanford University",
+      "bio": "CS student interested in AI"
+    }
+  ]
+}
+```
+
+---
+
+## 🏛️ Universities API
+
+### 1. List Universities
+
+**Endpoint:** `GET /api/universities/`
+
+**Description:** Get paginated list of universities.
+
+**Query Parameters:**
+- `search` - Search by name
+- `country` - Filter by country
+- `page` & `page_size` - Pagination
+
+**Success Response (200):**
+```json
+{
+  "count": 100,
+  "next": "...",
+  "previous": null,
+  "results": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Stanford University",
+      "short_name": "Stanford",
+      "country": "United States",
+      "state": "California",
+      "city": "Stanford",
+      "email_domain": "stanford.edu",
+      "website": "https://www.stanford.edu",
+      "logo_url": null
+    }
+  ]
+}
+```
+
+---
+
+### 2. Get University Details
+
+**Endpoint:** `GET /api/universities/{university_id}/`
+
+**Description:** Get detailed information about a specific university.
+
+**Success Response (200):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Stanford University",
+  "short_name": "Stanford",
+  "country": "United States",
+  "state": "California",
+  "city": "Stanford",
+  "email_domain": "stanford.edu",
+  "website": "https://www.stanford.edu",
+  "logo_url": null,
+  "student_count": 1247,
+  "professor_count": 89
+}
+```
+
+---
+
+### 3. Verify Email Domain
+
+**Endpoint:** `POST /api/universities/verify-email/`
+
+**Description:** Verify if an email domain belongs to a registered university.
+
+**Request Body:**
+```json
+{
+  "email": "student@stanford.edu"
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "verified": true,
+  "university": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Stanford University",
+    "short_name": "Stanford",
+    "country": "United States",
+    "email_domain": "stanford.edu"
+  }
+}
+```
+
+**Error Response (400):**
+```json
+{
+  "verified": false,
+  "message": "Email domain not associated with any university"
+}
+```
+
+---
+
+### 4. Search Universities by Domain
+
+**Endpoint:** `GET /api/universities/search-by-domain/`
+
+**Description:** Search for universities by email domain.
+
+**Query Parameters:**
+- `domain` - Email domain to search for
+
+**Example:**
+```
+GET /api/universities/search-by-domain/?domain=stanford.edu
+```
+
+**Success Response (200):**
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Stanford University",
+    "short_name": "Stanford",
+    "email_domain": "stanford.edu"
+  }
+]
+```
+
+---
+
+### 5. Get Universities by Country
+
+**Endpoint:** `GET /api/universities/country/{country_name}/`
+
+**Description:** Get all universities in a specific country.
+
+**Example:**
+```
+GET /api/universities/country/United States/
+```
+
+---
+
+## 🔧 Feed Configuration & Trending
+
+### 1. Get Feed Configuration
+
+**Endpoint:** `GET /api/feed-config/`
+
+**Description:** Get user's feed configuration and algorithm weights.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+```
+
+**Success Response (200):**
+```json
+{
+  "id": 1,
+  "show_university_posts": true,
+  "show_public_posts": true,
+  "show_project_updates": true,
+  "preferred_post_types": [],
+  "recency_weight": 0.25,
+  "relevance_weight": 0.25,
+  "engagement_weight": 0.25,
+  "university_weight": 0.25,
+  "updated_at": "2025-10-04T12:00:00Z"
+}
+```
+
+---
+
+### 2. Update Feed Configuration
+
+**Endpoint:** `PATCH /api/feed-config/`
+
+**Description:** Update user's feed preferences and algorithm weights.
+
+**Headers:**
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "show_university_posts": true,
+  "show_public_posts": false,
+  "recency_weight": 0.3,
+  "engagement_weight": 0.3,
+  "university_weight": 0.2,
+  "relevance_weight": 0.2
+}
+```
+
+**Note:** Weights must sum to 1.0
+
+**Success Response (200):**
+```json
+{
+  "id": 1,
+  "show_university_posts": true,
+  "show_public_posts": false,
+  "show_project_updates": true,
+  "preferred_post_types": [],
+  "recency_weight": 0.3,
+  "relevance_weight": 0.2,
+  "engagement_weight": 0.3,
+  "university_weight": 0.2,
+  "updated_at": "2025-10-04T12:30:00Z"
+}
+```
+
+---
+
+### 3. Get Trending Topics
+
+**Endpoint:** `GET /api/trending/`
+
+**Description:** Get trending topics across the platform.
+
+**Headers:**
+```
+Authorization: Bearer <access_token> (optional)
+```
+
+**Query Parameters:**
+- `university` - Filter by university ID
+- `limit` - Number of topics to return (default: 10)
+
+**Success Response (200):**
+```json
+[
+  {
+    "id": 1,
+    "topic": "AI",
+    "mention_count": 45,
+    "universities": ["Stanford", "MIT", "Berkeley"],
+    "trending_score": 0.95,
+    "created_at": "2025-10-01T12:00:00Z",
+    "updated_at": "2025-10-04T12:00:00Z"
+  },
+  {
+    "id": 2,
+    "topic": "Startup",
+    "mention_count": 38,
+    "universities": ["Stanford", "Harvard"],
+    "trending_score": 0.87,
+    "created_at": "2025-10-02T08:00:00Z",
+    "updated_at": "2025-10-04T11:30:00Z"
+  }
+]
+```
+
+---
+
+## 📧 Contact API
+
+### Submit Contact Inquiry
+
+**Endpoint:** `POST /api/contact/`
+
+**Description:** Submit a contact inquiry to platform administrators.
+
+**Request Body:**
+```json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "subject": "Partnership Inquiry",
+  "message": "I would like to discuss a partnership opportunity with EntreHive...",
+  "inquiry_type": "partnership"
+}
+```
+
+**Inquiry Types:**
+- `general` - General Inquiry
+- `partnership` - Partnership Opportunity
+- `university` - University Partnership
+- `technical` - Technical Support
+- `feedback` - Feedback & Suggestions
+- `investor` - Investor Relations
+- `press` - Press & Media
+- `other` - Other
+
+**Success Response (201):**
+```json
+{
+  "message": "Contact inquiry submitted successfully",
+  "inquiry_id": "123e4567-e89b-12d3-a456-426614174000",
+  "expected_response_time": "24-48 hours"
+}
+```
+
+**Error Response (400):**
+```json
+{
+  "name": ["This field is required."],
+  "email": ["Enter a valid email address."]
+}
+```
+
+---
+
+## 🔍 Search API
+
+### 1. Comprehensive Search
+
+**Endpoint:** `GET /api/accounts/search/`
+
+**Description:** Search across users, posts, and projects simultaneously.
+
+**Headers:**
+```
+Authorization: Bearer <access_token> (optional)
+```
+
+**Query Parameters:**
+- `q` - Search query (required)
+- `type` - Filter by content type: "users", "posts", "projects" (optional)
+
+**Example:**
+```
+GET /api/accounts/search/?q=artificial intelligence
+```
+
+**Success Response (200):**
+```json
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "ai_researcher",
+      "full_name": "Dr. AI Researcher",
+      "profile_picture": "...",
+      "user_role": "professor",
+      "bio": "AI and Machine Learning researcher"
+    }
+  ],
+  "posts": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "content": "Working on artificial intelligence project...",
+      "author": {...},
+      "created_at": "2025-10-04T12:00:00Z"
+    }
+  ],
+  "projects": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "AI Assistant Bot",
+      "summary": "An artificial intelligence assistant...",
+      "owner": {...}
+    }
+  ]
+}
+```
+
+---
+
+### 2. User Search
+
+**Endpoint:** `GET /api/accounts/search/users/`
+
+**Description:** Search for users by name, username, or bio.
+
+**Query Parameters:**
+- `q` - Search query (required)
+- `page` & `page_size` - Pagination
+
+---
+
+### 3. Post Search
+
+**Endpoint:** `GET /api/search/`
+
+**Description:** Search for posts by content.
+
+**Query Parameters:**
+- `q` - Search query
+- `page` & `page_size` - Pagination
+
+---
+
+### 4. Project Search
+
+**Endpoint:** `GET /api/projects/search/`
+
+**Description:** Search for projects by title, summary, or tags.
+
+**Query Parameters:**
+- `q` - Search query
+- `type` - Filter by project type
+- `status` - Filter by project status
+- `page` & `page_size` - Pagination
+
+---
+
+### 5. Hashtag Search
+
+**Endpoint:** `GET /api/hashtags/search/`
+
+**Description:** Search for posts by hashtag.
+
+**Query Parameters:**
+- `tag` - Hashtag to search for (without #)
+
+**Example:**
+```
+GET /api/hashtags/search/?tag=AI
+```
+
+**Success Response (200):**
+```json
+{
+  "tag": "AI",
+  "post_count": 45,
+  "posts": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "content": "Working on #AI project...",
+      "author": {...},
+      "created_at": "2025-10-04T12:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
 This API guide provides comprehensive documentation for integrating with the EntreHive backend. All endpoints are tested and ready for production use with your React frontend.
