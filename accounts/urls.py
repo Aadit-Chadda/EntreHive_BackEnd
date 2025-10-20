@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views_password_reset import custom_password_reset_confirm
 
 urlpatterns = [
     # Profile management endpoints
@@ -25,4 +26,11 @@ urlpatterns = [
     # Utility endpoints
     path('check-username/', views.check_username, name='check_username'),
     path('check-email/', views.check_email, name='check_email'),
+    
+    # Custom password reset confirm endpoint
+    path('password-reset-confirm/', custom_password_reset_confirm, name='custom_password_reset_confirm'),
+    
+    # Email verification endpoints
+    path('verify-email/<str:uidb64>/<str:token>/', views.verify_email, name='verify_email'),
+    path('resend-verification/', views.resend_verification_email, name='resend_verification_email'),
 ]

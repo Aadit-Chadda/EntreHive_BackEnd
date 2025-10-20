@@ -6,10 +6,11 @@ from .models import UserProfile, Follow
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = [
         'user', 'get_full_name', 'user_role', 'university', 
-        'location', 'is_profile_public', 'created_at'
+        'location', 'is_profile_public', 'created_at', 'email_verified'
     ]
     list_filter = [
-        'user_role', 'is_profile_public', 'show_email', 'created_at'
+        'user_role', 'is_profile_public', 'show_email', 'created_at',
+        'email_verified'
     ]
     search_fields = [
         'user__username', 'user__email', 'first_name', 'last_name',
@@ -38,6 +39,9 @@ class UserProfileAdmin(admin.ModelAdmin):
         }),
         ('Privacy Settings', {
             'fields': ('is_profile_public', 'show_email')
+        }),
+        ('Email Verification', {
+            'fields': ('email_verified', 'verification_sent_at')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

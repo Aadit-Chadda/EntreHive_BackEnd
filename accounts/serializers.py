@@ -95,6 +95,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     banner_image = serializers.SerializerMethodField()
     is_staff = serializers.BooleanField(source='user.is_staff', read_only=True)
     is_superuser = serializers.BooleanField(source='user.is_superuser', read_only=True)
+    days_until_disabled = serializers.SerializerMethodField()
+    should_show_verification_warning = serializers.SerializerMethodField()
     
     class Meta:
         model = UserProfile
@@ -108,11 +110,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'linkedin_url', 'website_url', 'github_url',
             'banner_style', 'banner_gradient', 'banner_image',  # Banner fields
             'is_profile_public', 'show_email',
+            'email_verified', 'verification_sent_at', 'days_until_disabled', 'should_show_verification_warning',  # Email verification
             'role_specific_info', 'created_at', 'updated_at',
             'followers_count', 'following_count', 'is_following', 'is_followed_by',
             'is_staff', 'is_superuser'  # Django admin fields
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'is_staff', 'is_superuser']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'is_staff', 'is_superuser', 'email_verified', 'verification_sent_at']
     
     def get_full_name(self, obj):
         return obj.get_full_name()
@@ -160,6 +163,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.banner_image.url)
             return obj.banner_image.url
         return None
+    
+    def get_days_until_disabled(self, obj):
+        """Return days remaining until account is disabled"""
+        if obj.email_verified:
+            return None
+        days_since = obj.days_since_verification_sent()
+        if days_since is None:
+            return 30
+        return max(0, 30 - days_since)
+    
+    def get_should_show_verification_warning(self, obj):
+        """Return whether to show verification warning"""
+        return not obj.email_verified
     
     def validate_user_role(self, value):
         """Validate user role"""
@@ -839,3 +855,57 @@ class EnhancedPublicUserProfileSerializer(PublicUserProfileSerializer):
             owned = Project.objects.filter(owner=obj.user, visibility='public').count()
             member = Project.objects.filter(team_members=obj.user, visibility='public').count()
             return {'owned': owned, 'member': member, 'total': owned + member}
+
+
+class CustomPasswordResetSerializer(serializers.Serializer):
+    """
+    Custom password reset serializer that sends reset email with frontend URL
+    """
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        """Validate that the email exists in the system"""
+        # Check if user exists
+        if not User.objects.filter(email__iexact=value).exists():
+            # Don't reveal that the user doesn't exist for security
+            pass
+        return value
+
+    def save(self):
+        """Send password reset email with beautiful HTML template"""
+        from django.conf import settings
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.http import urlsafe_base64_encode
+        from django.utils.encoding import force_bytes
+        from .email_utils import send_password_reset_email
+        
+        email = self.validated_data['email']
+        
+        # Get user by email
+        users = User.objects.filter(email__iexact=email)
+        
+        for user in users:
+            # Generate token and uid using the same method as Django's built-in password reset
+            # IMPORTANT: Must convert user.pk to STRING first, then to bytes for proper encoding
+            uid_encoded = urlsafe_base64_encode(force_bytes(str(user.pk)))
+            
+            # Django 3.x returns bytes, need to decode to string
+            if isinstance(uid_encoded, bytes):
+                uid = uid_encoded.decode('utf-8')
+            else:
+                uid = uid_encoded
+            
+            token = default_token_generator.make_token(user)
+            
+            # Build frontend reset URL
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+            reset_url = f"{frontend_url}/reset-password/{uid}/{token}/"
+            
+            # Send beautiful HTML email
+            try:
+                success = send_password_reset_email(user, reset_url)
+                if not success:
+                    raise serializers.ValidationError("Failed to send password reset email")
+            except Exception as e:
+                print(f"Error sending password reset email: {e}")
+                raise serializers.ValidationError("Failed to send password reset email")

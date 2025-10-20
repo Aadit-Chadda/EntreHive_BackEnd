@@ -95,6 +95,10 @@ class UserProfile(models.Model):
     is_profile_public = models.BooleanField(default=True, help_text="Make profile visible to other users")
     show_email = models.BooleanField(default=False, help_text="Show email to other users")
     
+    # Email verification
+    email_verified = models.BooleanField(default=False, help_text="Has the user verified their email address")
+    verification_sent_at = models.DateTimeField(blank=True, null=True, help_text="When the verification email was sent")
+    
     class Meta:
         verbose_name = "User Profile"
         verbose_name_plural = "User Profiles"
@@ -161,6 +165,31 @@ class UserProfile(models.Model):
         if not user or not user.is_authenticated:
             return False
         return self.user.followers.filter(follower=user).exists()
+    
+    def days_since_verification_sent(self):
+        """Return number of days since verification email was sent"""
+        if not self.verification_sent_at:
+            return None
+        from django.utils import timezone
+        delta = timezone.now() - self.verification_sent_at
+        return delta.days
+    
+    def should_disable_account(self):
+        """Check if account should be disabled due to unverified email"""
+        if self.email_verified:
+            return False
+        days = self.days_since_verification_sent()
+        if days is not None and days >= 30:
+            return True
+        return False
+    
+    def disable_account_if_unverified(self):
+        """Disable account if email not verified within 30 days"""
+        if self.should_disable_account() and self.user.is_active:
+            self.user.is_active = False
+            self.user.save()
+            return True
+        return False
 
 
 @receiver(post_save, sender=User)

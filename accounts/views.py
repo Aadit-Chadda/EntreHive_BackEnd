@@ -382,6 +382,137 @@ def user_search(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def verify_email(request, uidb64, token):
+    """
+    Verify user's email address using token
+    """
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.http import urlsafe_base64_decode
+    from django.utils.encoding import force_str
+    from django.utils import timezone
+    
+    print(f"=== Email Verification Request ===")
+    print(f"uidb64: {uidb64}")
+    print(f"token: {token}")
+    
+    try:
+        # Decode user ID
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        print(f"Decoded UID: {uid}")
+        user = User.objects.get(pk=uid)
+        print(f"Found user: {user.username} ({user.email})")
+    except (TypeError, ValueError, OverflowError) as e:
+        print(f"Error decoding UID: {e}")
+        return Response(
+            {'error': 'Invalid verification link'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except User.DoesNotExist:
+        print(f"User with ID {uid} does not exist")
+        return Response(
+            {'error': 'Invalid verification link'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check token
+    token_valid = default_token_generator.check_token(user, token)
+    print(f"Token valid: {token_valid}")
+    
+    if not token_valid:
+        return Response(
+            {'error': 'Invalid or expired verification link'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get or create profile
+    try:
+        profile = user.profile
+        print(f"Profile found for user {user.username}")
+    except UserProfile.DoesNotExist:
+        print(f"Profile not found, creating new profile for user {user.username}")
+        profile = UserProfile.objects.create(user=user)
+    
+    # Check if already verified
+    if profile.email_verified:
+        print(f"Email already verified for user {user.username}")
+        return Response(
+            {'message': 'Email already verified', 'already_verified': True},
+            status=status.HTTP_200_OK
+        )
+    
+    # Mark email as verified
+    profile.email_verified = True
+    profile.save()
+    print(f"✅ Email verified successfully for user {user.username}")
+    
+    return Response(
+        {'message': 'Email verified successfully', 'verified': True},
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def resend_verification_email(request):
+    """
+    Resend verification email to user
+    """
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.http import urlsafe_base64_encode
+    from django.utils.encoding import force_bytes
+    from django.conf import settings
+    from django.utils import timezone
+    from .email_utils import send_verification_email
+    
+    user = request.user
+    
+    # Get or create profile
+    try:
+        profile = user.profile
+    except UserProfile.DoesNotExist:
+        profile = UserProfile.objects.create(user=user)
+    
+    # Check if already verified
+    if profile.email_verified:
+        return Response(
+            {'error': 'Email is already verified'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Generate verification token and URL
+    uid = urlsafe_base64_encode(force_bytes(str(user.pk)))
+    if isinstance(uid, bytes):
+        uid = uid.decode('utf-8')
+    
+    token = default_token_generator.make_token(user)
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+    verification_url = f"{frontend_url}/verify-email/{uid}/{token}/"
+    
+    # Send verification email
+    try:
+        success = send_verification_email(user, verification_url)
+        if success:
+            profile.verification_sent_at = timezone.now()
+            profile.save()
+            return Response(
+                {'message': 'Verification email sent successfully'},
+                status=status.HTTP_200_OK
+            )
+        else:
+            return Response(
+                {'error': 'Failed to send verification email'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    except Exception as e:
+        print(f"Error sending verification email: {e}")
+        return Response(
+            {'error': 'Failed to send verification email'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def simple_comprehensive_search(request):
     """
     Comprehensive search that uses existing search endpoints

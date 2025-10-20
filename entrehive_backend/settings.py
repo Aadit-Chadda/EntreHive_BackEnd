@@ -124,7 +124,7 @@ ROOT_URLCONF = 'entrehive_backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'accounts' / 'templates'],  # Add templates directory for email templates
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -216,13 +216,15 @@ REST_AUTH = {
     'SESSION_LOGIN': False,
 
     # Password reset settings
-    'PASSWORD_RESET_USE_SITES_DOMAIN': True,
-    'PASSWORD_RESET_VERIFY_URL': 'reset-password/',
+    'PASSWORD_RESET_USE_SITES_DOMAIN': False,
 
     'OLD_PASSWORD_FIELD_ENABLED': True,
     
     # Custom serializer for registration
     'REGISTER_SERIALIZER': 'accounts.serializers.ExtendedRegisterSerializer',
+    
+    # Custom serializer for password reset to use frontend URL
+    'PASSWORD_RESET_SERIALIZER': 'accounts.serializers.CustomPasswordResetSerializer',
 }
 
 # SimpleJWT settings for JWT token lifetimes and behavior
@@ -253,6 +255,12 @@ USE_I18N = True
 
 USE_TZ = True
 
+
+# Frontend URL configuration
+if DEBUG:
+    FRONTEND_URL = "http://localhost:3000"
+else:
+    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
 # CORS settings for frontend integration
 if DEBUG:
@@ -291,10 +299,12 @@ CORS_ALLOW_HEADERS = [
 # Allow cookies in cross-origin requests
 CORS_ALLOW_CREDENTIALS = True
 
-if not DEBUG:
-    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-else:
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# if not DEBUG:
+#     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# else:
+#     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587

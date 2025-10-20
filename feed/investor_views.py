@@ -235,11 +235,16 @@ def investor_stats(request):
         )
     
     # Get counts
-    total_projects = Project.objects.filter(visibility__in=['public', 'university']).count()
-    raising_funding = Project.objects.filter(
-        visibility__in=['public', 'university'],
-        needs__contains='funding'
-    ).count()
+    all_projects = Project.objects.filter(visibility__in=['public', 'university'])
+    total_projects = all_projects.count()
+    
+    # For SQLite compatibility, filter funding projects in Python
+    # (SQLite doesn't support JSON contains lookup)
+    raising_funding = sum(
+        1 for project in all_projects 
+        if isinstance(project.needs, list) and 'funding' in project.needs
+    )
+    
     prototypes_ready = Project.objects.filter(
         visibility__in=['public', 'university'],
         status__in=['mvp', 'launched']

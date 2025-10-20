@@ -1,0 +1,37 @@
+Welcome to Entrehive, {{ user_name }}! 🎉
+
+We're thrilled to have you join our vibrant community of entrepreneurs, students, professors, and investors! You're now part of a network dedicated to fostering innovation and collaboration.
+
+Get Started: {{ frontend_url }}
+
+What you can do on Entrehive:
+
+💡 Share Your Ideas
+Post updates, share your projects, and inspire others with your entrepreneurial journey.
+
+🤝 Build Your Network
+Connect with like-minded individuals, find co-founders, and grow your professional circle.
+
+🚀 Showcase Projects
+Create project pages, recruit team members, and bring your vision to life.
+
+📈 Discover Opportunities
+Find projects to join, investors to connect with, and mentors to guide you.
+
+Quick Tip: Complete your profile to make a great first impression. Add a profile picture, write a bio, and share what you're working on!
+
+If you have any questions or need assistance, don't hesitate to reach out to our support team. We're here to help you succeed.
+
+Best regards,
+The Entrehive Team
+
+---
+Entrehive - Empowering Innovation & Entrepreneurship
+
+About Us: {{ frontend_url }}/about
+Help Center: {{ frontend_url }}/help
+Privacy Policy: {{ frontend_url }}/privacy
+
+This email was sent to {{ user_email }}
+© 2025 Entrehive. All rights reserved.
+

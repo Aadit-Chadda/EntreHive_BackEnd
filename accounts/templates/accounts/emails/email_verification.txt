@@ -1,0 +1,29 @@
+Verify Your Entrehive Email Address
+
+Hi {{ user_name }},
+
+Thank you for creating an Entrehive account! To get started, please verify your email address by clicking the link below.
+
+{{ verification_url }}
+
+IMPORTANT: You have 30 days to verify your email address. If you don't verify within this period, your account will be temporarily disabled for security reasons.
+
+Why verify? Email verification helps us ensure account security and allows you to receive important updates about your Entrehive account.
+
+Once verified, you'll have full access to all Entrehive features including posting, creating projects, and connecting with the community.
+
+Need help? Contact our support team - we're here to assist you!
+
+Best regards,
+The Entrehive Team
+
+---
+Entrehive - Empowering Innovation & Entrepreneurship
+
+Help Center: {{ frontend_url }}/help
+Contact Support: {{ frontend_url }}/contact
+Privacy Policy: {{ frontend_url }}/privacy
+
+This email was sent to {{ user_email }}
+© 2025 Entrehive. All rights reserved.
+
