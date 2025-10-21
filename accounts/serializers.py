@@ -106,7 +106,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'profile_picture', 'bio', 'location', 'university', 'university_name',
             'major', 'graduation_year',  # Student fields
             'department', 'research_interests',  # Professor fields
-            'investment_focus', 'company',  # Investor fields
+            'investment_focus', 'company', 'interests',  # Investor fields
             'linkedin_url', 'website_url', 'github_url',
             'banner_style', 'banner_gradient', 'banner_image',  # Banner fields
             'is_profile_public', 'show_email',
@@ -207,7 +207,7 @@ class UserProfileCreateUpdateSerializer(serializers.ModelSerializer):
             'profile_picture', 'bio', 'location', 'university',
             'major', 'graduation_year',  # Student fields
             'department', 'research_interests',  # Professor fields
-            'investment_focus', 'company',  # Investor fields
+            'investment_focus', 'company', 'interests',  # Investor fields
             'linkedin_url', 'website_url', 'github_url',
             'banner_style', 'banner_gradient', 'banner_image',  # Banner fields
             'is_profile_public', 'show_email'
@@ -431,6 +431,12 @@ class ExtendedRegisterSerializer(CustomRegisterSerializer):
     location = serializers.CharField(max_length=100, required=False, allow_blank=True)
     university_id = serializers.UUIDField(required=False, allow_null=True)
     verified_university = serializers.BooleanField(default=False, required=False)
+    interests = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        required=False,
+        allow_empty=True,
+        help_text="Investor interests/categories"
+    )
     
     def validate(self, data):
         """
@@ -493,6 +499,7 @@ class ExtendedRegisterSerializer(CustomRegisterSerializer):
             'bio': self.validated_data.get('bio', ''),
             'location': self.validated_data.get('location', ''),
             'university_id': self.validated_data.get('university_id'),
+            'interests': self.validated_data.get('interests', []),
         })
         return data
     
@@ -509,6 +516,7 @@ class ExtendedRegisterSerializer(CustomRegisterSerializer):
         profile.location = self.cleaned_data.get('location', '')
         profile.first_name = self.cleaned_data.get('first_name', '')
         profile.last_name = self.cleaned_data.get('last_name', '')
+        profile.interests = self.cleaned_data.get('interests', [])
         
         # Set university if provided and verified
         university_id = self.cleaned_data.get('university_id')

@@ -2,14 +2,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from django.db.models import Q, Count, Case, When, IntegerField, Value, F
+from django.db.models import Q
 from django.contrib.auth.models import User
 from projects.models import Project
 from posts.models import Post
 from projects.serializers import ProjectSerializer
 from posts.serializers import PostSerializer
-from functools import reduce
-import operator
 
 
 def is_investor(user):
@@ -55,72 +53,91 @@ def investor_feed(request):
     # Parse topics
     topics = [t.strip() for t in topics_str.split(',') if t.strip()] if topics_str else []
     
-    # Base project query
+    # If no topics specified, use investor's interests
+    user_interests = []
+    if not topics and hasattr(request.user, 'profile'):
+        user_interests = request.user.profile.interests if request.user.profile.interests else []
+        topics = user_interests
+    
+    # Base project query (without JSONField filters for SQLite compatibility)
     project_query = Q(visibility__in=['public', 'university'])
     
     # University filtering
     if feed_type == 'university' and university_id:
         project_query &= Q(university_id=university_id)
     
-    # Topic filtering
-    if topics:
-        topic_queries = [Q(categories__contains=topic) for topic in topics]
-        project_query &= reduce(operator.or_, topic_queries)
-    
-    # Search filtering
+    # Search filtering (text fields only)
     if search_query:
         project_query &= (
             Q(title__icontains=search_query) |
-            Q(summary__icontains=search_query) |
-            Q(tags__contains=search_query)
+            Q(summary__icontains=search_query)
         )
     
-    # Quick filters
-    if quick_filter == 'funding':
-        project_query &= Q(needs__contains='funding')
-    elif quick_filter == 'prototype':
-        project_query &= Q(status='mvp') | Q(status='launched')
-    elif quick_filter == 'hiring':
-        project_query &= Q(needs__contains='dev') | Q(needs__contains='design') | Q(needs__contains='marketing')
-    
-    # Get projects
-    projects = Project.objects.filter(project_query).select_related(
-        'owner', 'owner__profile', 'university'
-    ).prefetch_related('team_members', 'team_members__profile')
-    
-    # Calculate match score for sorting
-    if topics:
-        # Count how many topics match
-        match_cases = [
-            When(categories__contains=topic, then=Value(1))
-            for topic in topics
-        ]
-        projects = projects.annotate(
-            match_score=Count(
-                Case(*match_cases, default=Value(0), output_field=IntegerField())
-            )
-        )
-    else:
-        projects = projects.annotate(match_score=Value(0))
-    
-    # Sorting
-    if sort_by == 'best_match' and topics:
-        projects = projects.order_by('-match_score', '-created_at')
-    elif sort_by == 'recent':
-        projects = projects.order_by('-created_at')
-    elif sort_by == 'saved':
-        # TODO: Implement saved/starred functionality
-        projects = projects.order_by('-created_at')
-    else:
-        projects = projects.order_by('-match_score', '-created_at')
+    # Quick filter for status (non-JSON field)
+    if quick_filter == 'prototype':
+        project_query &= Q(status__in=['mvp', 'launched'])
     
     # Cursor pagination
     if cursor:
-        projects = projects.filter(created_at__lt=cursor)
+        project_query &= Q(created_at__lt=cursor)
+    
+    # Get all matching projects (we'll filter by topics in Python)
+    all_projects = Project.objects.filter(project_query).select_related(
+        'owner', 'owner__profile', 'university'
+    ).prefetch_related('team_members', 'team_members__profile').order_by('-created_at')
+    
+    # Filter by topics and calculate match scores in Python (SQLite-compatible)
+    # RELAXED FILTERING: Show projects even with partial matches
+    filtered_projects = []
+    for project in all_projects:
+        # Check quick filters that use JSONFields
+        if quick_filter == 'funding':
+            if not (isinstance(project.needs, list) and 'funding' in project.needs):
+                continue
+        elif quick_filter == 'hiring':
+            if not (isinstance(project.needs, list) and 
+                   any(need in project.needs for need in ['dev', 'design', 'marketing'])):
+                continue
+        
+        # Check topic filtering - RELAXED: Show ALL projects if using interests
+        categories = project.categories if isinstance(project.categories, list) else []
+        
+        if topics and topics_str:  # Manual topic selection - strict filtering
+            matches = [topic for topic in topics if topic in categories]
+            if not matches:
+                continue
+            match_score = len(matches)
+        elif user_interests:  # Using saved interests - show all, prioritize matches
+            matches = [topic for topic in topics if topic in categories]
+            match_score = len(matches) * 2 if matches else 0.5  # Boost matches, but include all
+        else:  # No filtering - show all
+            match_score = 0
+        
+        # Check search in tags (JSONField)
+        if search_query:
+            tags = project.tags if isinstance(project.tags, list) else []
+            if not any(search_query.lower() in str(tag).lower() for tag in tags):
+                # Already filtered by title/summary, so if tags don't match, skip
+                pass
+        
+        # Add project with match score
+        project.match_score = match_score
+        filtered_projects.append(project)
+    
+    # Sort by match score and recency
+    if sort_by == 'best_match' and topics:
+        filtered_projects.sort(key=lambda x: (x.match_score, x.created_at), reverse=True)
+    elif sort_by == 'recent':
+        filtered_projects.sort(key=lambda x: x.created_at, reverse=True)
+    elif sort_by == 'saved':
+        # TODO: Implement saved/starred functionality
+        filtered_projects.sort(key=lambda x: x.created_at, reverse=True)
+    else:
+        filtered_projects.sort(key=lambda x: (x.match_score if hasattr(x, 'match_score') else 0, x.created_at), reverse=True)
     
     # Limit projects (prioritize them in feed)
     project_limit = int(limit * 0.83)  # ~10 out of 12
-    projects = projects[:project_limit]
+    projects = filtered_projects[:project_limit]
     
     # Base post query (posts with visibility public or university)
     post_query = Q(visibility__in=['public', 'university'])
@@ -129,26 +146,37 @@ def investor_feed(request):
     if feed_type == 'university' and university_id:
         post_query &= Q(author__profile__university_id=university_id)
     
-    # Topic filtering for posts (through tagged projects)
-    if topics:
-        topic_queries_post = [Q(tagged_projects__categories__contains=topic) for topic in topics]
-        post_query &= reduce(operator.or_, topic_queries_post)
-    
     # Search filtering for posts
     if search_query:
         post_query &= Q(content__icontains=search_query)
     
-    # Get posts
-    posts = Post.objects.filter(post_query).select_related(
-        'author', 'author__profile', 'university'
-    ).prefetch_related('tagged_projects', 'likes')
-    
     # Cursor pagination for posts
     if cursor:
-        posts = posts.filter(created_at__lt=cursor)
+        post_query &= Q(created_at__lt=cursor)
     
+    # Get posts (filter by topics in Python for SQLite compatibility)
+    all_posts = Post.objects.filter(post_query).select_related(
+        'author', 'author__profile', 'university'
+    ).prefetch_related('tagged_projects', 'likes').order_by('-created_at')
+    
+    # Filter posts by topic if needed
+    filtered_posts = []
     post_limit = limit - len(projects)  # Fill remaining slots with posts
-    posts = posts.order_by('-created_at')[:post_limit]
+    
+    if topics:
+        for post in all_posts:
+            if len(filtered_posts) >= post_limit:
+                break
+            # Check if any tagged project has matching categories
+            for tagged_project in post.tagged_projects.all():
+                categories = tagged_project.categories if isinstance(tagged_project.categories, list) else []
+                if any(topic in categories for topic in topics):
+                    filtered_posts.append(post)
+                    break
+    else:
+        filtered_posts = list(all_posts[:post_limit])
+    
+    posts = filtered_posts
     
     # Serialize data
     project_data = ProjectSerializer(projects, many=True, context={'request': request}).data
@@ -185,7 +213,9 @@ def investor_feed(request):
         'results': combined_feed,
         'next_cursor': next_cursor,
         'count': len(combined_feed),
-        'has_more': len(combined_feed) == limit
+        'has_more': len(combined_feed) == limit,
+        'using_interests': bool(user_interests),  # Indicate if interests were used
+        'active_topics': topics  # Show which topics are being used for filtering
     })
 
 

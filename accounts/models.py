@@ -55,6 +55,11 @@ class UserProfile(models.Model):
     # For investors
     investment_focus = models.TextField(max_length=500, blank=True, null=True, help_text="Investment focus areas")
     company = models.CharField(max_length=200, blank=True, null=True, help_text="Investment firm or company")
+    interests = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Investor interests/categories (e.g., ['AI', 'Fintech', 'EdTech'])"
+    )
     
     # Social links
     linkedin_url = models.URLField(blank=True, null=True, help_text="LinkedIn profile URL")
