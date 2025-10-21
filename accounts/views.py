@@ -97,6 +97,68 @@ class PublicProfileView(generics.RetrieveAPIView):
         return UserProfile.objects.filter(is_profile_public=True)
 
 
+def is_investor(user):
+    """Check if user has investor role"""
+    return hasattr(user, 'profile') and user.profile.user_role == 'investor'
+
+
+class InvestorProfileView(generics.RetrieveAPIView):
+    """
+    Investor-specific profile view for students/professors
+    Investors can view public profiles and their associated public projects
+    GET /api/accounts/profile/investor/<username>/
+    """
+    serializer_class = EnhancedPublicUserProfileSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'user__username'
+    lookup_url_kwarg = 'username'
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Only allow investors to use this endpoint
+        if not is_investor(user):
+            return UserProfile.objects.none()
+        
+        # Return only public profiles for students and professors
+        # Exclude other investors from being viewed
+        return UserProfile.objects.filter(
+            is_profile_public=True
+        ).exclude(
+            user_role='investor'
+        )
+    
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Override to provide investor-specific context
+        """
+        try:
+            instance = self.get_object()
+        except:
+            return Response(
+                {
+                    'error': 'Profile not found or you do not have permission to view this profile.',
+                    'detail': 'Investors can only view public student and professor profiles.'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = self.get_serializer(instance)
+        data = serializer.data
+        
+        # Add investor-specific context
+        data['is_investor_view'] = True
+        
+        # Filter projects to only show public and university projects
+        if 'projects' in data and data['projects']:
+            data['projects'] = [
+                project for project in data['projects']
+                if project.get('visibility') in ['public', 'university']
+            ]
+        
+        return Response(data)
+
+
 class ProfileListView(generics.ListAPIView):
     """
     List public profiles with search and filtering (enhanced with posts and projects)

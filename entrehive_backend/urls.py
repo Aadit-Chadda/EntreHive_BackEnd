@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/', include('feed.urls')),
     path('api/notifications/', include('notifications.urls')),
     path('api/contact/', include('contact.urls')),
+    path('api/messaging/', include('messaging.urls')),
     path('', include('universities.urls')),
 ]
 

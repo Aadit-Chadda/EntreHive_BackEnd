@@ -12,6 +12,10 @@ urlpatterns = [
     # Public profile endpoints
     path('profiles/', views.ProfileListView.as_view(), name='profile_list'),
     path('profiles/stats/', views.profile_stats, name='profile_stats'),
+    
+    # Investor-specific profile endpoint (must come before general profile to avoid conflicts)
+    path('profile/investor/<str:username>/', views.InvestorProfileView.as_view(), name='investor_profile'),
+    
     path('profiles/<str:username>/', views.PublicProfileView.as_view(), name='public_profile'),
     
     # Follow endpoints

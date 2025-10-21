@@ -2,6 +2,7 @@ from rest_framework import generics, status, permissions, parsers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -10,6 +11,20 @@ from .serializers import (
     ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer,
     ProjectInvitationSerializer, AddTeamMemberSerializer
 )
+
+
+def is_investor(user):
+    """Check if user has investor role"""
+    return hasattr(user, 'profile') and user.profile.user_role == 'investor'
+
+
+def restrict_investor_access(user):
+    """Raise exception if user is an investor"""
+    if is_investor(user):
+        raise PermissionDenied(
+            detail="Access denied. Investors should use the investor-specific endpoints at /api/projects/investor/",
+            code=403
+        )
 
 
 class ProjectPagination(PageNumberPagination):
@@ -21,6 +36,7 @@ class ProjectPagination(PageNumberPagination):
 class ProjectListCreateView(generics.ListCreateAPIView):
     """
     List all projects or create a new project
+    RESTRICTED: Students and professors only
     """
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -30,8 +46,12 @@ class ProjectListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         """
         Filter projects based on user permissions and visibility
+        RESTRICTED: Investors cannot use this endpoint
         """
         user = self.request.user
+        
+        # Restrict investor access
+        restrict_investor_access(user)
         queryset = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile')
         
         # Filter by visibility - users can see:
@@ -88,7 +108,9 @@ class ProjectListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         """
         Set the project owner to the current user when creating
+        RESTRICTED: Investors cannot create projects
         """
+        restrict_investor_access(self.request.user)
         serializer.save(owner=self.request.user)
     
     def create(self, request, *args, **kwargs):
@@ -111,11 +133,17 @@ class ProjectListCreateView(generics.ListCreateAPIView):
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update or delete a project
+    RESTRICTED: Students and professors only. Investors use /api/projects/investor/<id>/
     """
     queryset = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile')
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [parsers.JSONParser, parsers.MultiPartParser, parsers.FormParser]
+    
+    def initial(self, request, *args, **kwargs):
+        """Check access before any operations"""
+        super().initial(request, *args, **kwargs)
+        restrict_investor_access(request.user)
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -253,7 +281,11 @@ class UserProjectsView(generics.ListAPIView):
 def add_team_member(request, project_id):
     """
     Add a team member to a project by username
+    RESTRICTED: Students and professors only
     """
+    # Restrict investor access
+    restrict_investor_access(request.user)
+    
     try:
         project = Project.objects.get(id=project_id)
     except Project.DoesNotExist:
@@ -298,7 +330,11 @@ def add_team_member(request, project_id):
 def remove_team_member(request, project_id, user_id):
     """
     Remove a team member from a project
+    RESTRICTED: Students and professors only
     """
+    # Restrict investor access
+    restrict_investor_access(request.user)
+    
     try:
         project = Project.objects.get(id=project_id)
         user_to_remove = User.objects.get(id=user_id)

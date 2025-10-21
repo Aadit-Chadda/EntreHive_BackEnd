@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     'feed',
     'notifications',
     'contact',
+    'messaging',
 ]
 
 

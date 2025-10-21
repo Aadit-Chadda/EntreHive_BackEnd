@@ -58,6 +58,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     is_team_member = serializers.SerializerMethodField()
     can_edit = serializers.SerializerMethodField()
     banner_image = serializers.ImageField(required=False, allow_null=True)
+    university = serializers.SerializerMethodField()
     
     class Meta:
         model = Project
@@ -65,10 +66,20 @@ class ProjectSerializer(serializers.ModelSerializer):
             'id', 'title', 'owner', 'team_members', 'project_type', 'status',
             'summary', 'needs', 'categories', 'tags', 'preview_image',
             'banner_style', 'banner_gradient', 'banner_image',
-            'pitch_url', 'repo_url', 'visibility', 'created_at', 'updated_at',
+            'pitch_url', 'repo_url', 'visibility', 'university', 'created_at', 'updated_at',
             'team_count', 'is_team_member', 'can_edit'
         ]
-        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'owner', 'university', 'created_at', 'updated_at']
+    
+    def get_university(self, obj):
+        """Return university information"""
+        if obj.university:
+            return {
+                'id': obj.university.id,
+                'name': obj.university.name,
+                'short_name': getattr(obj.university, 'short_name', obj.university.name)
+            }
+        return None
     
     def get_team_count(self, obj):
         return obj.get_team_count()
