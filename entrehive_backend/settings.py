@@ -144,40 +144,40 @@ WSGI_APPLICATION = 'entrehive_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if DEBUG:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
 
+else:
+    POSTGRES_DB = os.environ.get("POSTGRES_DB") #database name
+    POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD") # database user password
+    POSTGRES_USER = os.environ.get("POSTGRES_USER") # database username
+    POSTGRES_HOST = os.environ.get("POSTGRES_HOST") # database host
+    POSTGRES_PORT = os.environ.get("POSTGRES_PORT") # database port
 
-# POSTGRES_DB = os.environ.get("POSTGRES_DB") #database name
-# POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD") # database user password
-# POSTGRES_USER = os.environ.get("POSTGRES_USER") # database username
-# POSTGRES_HOST = os.environ.get("POSTGRES_HOST") # database host
-# POSTGRES_PORT = os.environ.get("POSTGRES_PORT") # database port
+    POSTGRES_READY = (
+        POSTGRES_DB is not None
+        and POSTGRES_PASSWORD is not None
+        and POSTGRES_USER is not None
+        and POSTGRES_HOST is not None
+        and POSTGRES_PORT is not None
+    )
 
-# POSTGRES_READY = (
-#     POSTGRES_DB is not None
-#     and POSTGRES_PASSWORD is not None
-#     and POSTGRES_USER is not None
-#     and POSTGRES_HOST is not None
-#     and POSTGRES_PORT is not None
-# )
-
-# if POSTGRES_READY:
-#     DATABASES = {
-#         "default": {
-#             "ENGINE": "django.db.backends.postgresql",
-#             "NAME": POSTGRES_DB,
-#             "USER": POSTGRES_USER,
-#             "PASSWORD": POSTGRES_PASSWORD,
-#             "HOST": POSTGRES_HOST,
-#             "PORT": POSTGRES_PORT,
-#         }
-#     }
+    if POSTGRES_READY:
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": POSTGRES_DB,
+                "USER": POSTGRES_USER,
+                "PASSWORD": POSTGRES_PASSWORD,
+                "HOST": POSTGRES_HOST,
+                "PORT": POSTGRES_PORT,
+            }
+        }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -300,12 +300,10 @@ CORS_ALLOW_HEADERS = [
 # Allow cookies in cross-origin requests
 CORS_ALLOW_CREDENTIALS = True
 
-# if not DEBUG:
-#     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# else:
-#     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+if not DEBUG:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
@@ -327,12 +325,61 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Media files (user uploads)
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# =============================================================================
+# STATIC AND MEDIA FILES CONFIGURATION - BUCKETEER ONLY
+# =============================================================================
+
+if DEBUG:
+    STATIC_URL = 'static/'
+    STATIC_ROOT = BASE_DIR / 'staticfiles'
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+
+# Bucketeer Configuration (Heroku S3 addon)
+AWS_ACCESS_KEY_ID = os.environ.get('BUCKETEER_AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.environ.get('BUCKETEER_AWS_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.environ.get('BUCKETEER_BUCKET_NAME')
+AWS_S3_REGION_NAME = os.environ.get('BUCKETEER_AWS_REGION', 'us-east-1')
+
+# S3 Configuration for Bucketeer
+AWS_S3_OBJECT_PARAMETERS = {
+    "CacheControl": "max-age=86400",
+}
+AWS_S3_USE_SSL = True
+AWS_S3_VERIFY = True
+AWS_QUERYSTRING_AUTH = True
+AWS_S3_FILE_OVERWRITE = True
+AWS_S3_SIGNATURE_VERSION = 's3v4'
+
+STATIC_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/static/'
+MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/media/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # Local collection point for collectstatic
+MEDIA_ROOT = BASE_DIR / 'media'   # Local fallback
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'entrehive_backend.config.MediaStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'entrehive_backend.config.StaticStorage',
+    },
+}
+
+# Static files directories - source directories for collectstatic
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+
+DEFAULT_FILE_STORAGE = 'entrehive_backend.config.MediaStorage'
+STATICFILES_STORAGE = 'entrehive_backend.config.StaticStorage'
+
+# Debug output
+if not DEBUG:
+    print(f"BUCKETEER_BUCKET_NAME: {AWS_STORAGE_BUCKET_NAME}")
+    print(f"STATIC_URL: {STATIC_URL}")
+    print(f"MEDIA_URL: {MEDIA_URL}")
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
