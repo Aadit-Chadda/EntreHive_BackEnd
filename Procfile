@@ -1,0 +1,1 @@
+web: gunicorn entrehive_backend.wsgi
