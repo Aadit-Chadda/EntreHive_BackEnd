@@ -6,9 +6,11 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django_ratelimit.decorators import ratelimit
+from django_ratelimit.exceptions import Ratelimited
 from .models import UserProfile, Follow
 from .serializers import (
-    UserProfileSerializer, 
+    UserProfileSerializer,
     UserProfileCreateUpdateSerializer,
     PublicUserProfileSerializer,
     EnhancedUserProfileSerializer,
@@ -68,9 +70,9 @@ class PublicProfileView(generics.RetrieveAPIView):
         return UserProfile.objects.filter(is_profile_public=True)
 
 
-def is_investor(user):
-    """Check if user has investor role"""
-    return hasattr(user, 'profile') and user.profile.user_role == 'investor'
+def is_investor_or_mentor(user):
+    """Check if user has investor or mentor role"""
+    return hasattr(user, 'profile') and user.profile.user_role in ['investor', 'mentor']
 
 
 class InvestorProfileView(generics.RetrieveAPIView):
@@ -87,16 +89,16 @@ class InvestorProfileView(generics.RetrieveAPIView):
     def get_queryset(self):
         user = self.request.user
         
-        # Only allow investors to use this endpoint
-        if not is_investor(user):
+        # Only allow investors and mentors to use this endpoint
+        if not is_investor_or_mentor(user):
             return UserProfile.objects.none()
-        
+
         # Return only public profiles for students and professors
-        # Exclude other investors from being viewed
+        # Exclude other investors and mentors from being viewed
         return UserProfile.objects.filter(
             is_profile_public=True
         ).exclude(
-            user_role='investor'
+            user_role__in=['investor', 'mentor']
         )
     
     def retrieve(self, request, *args, **kwargs):
@@ -170,39 +172,43 @@ class ProfileListView(generics.ListAPIView):
 
 
 @api_view(['GET'])
+@ratelimit(key='ip', rate='5/m', method='GET', block=True)
 def check_username(request):
     """
     Check if username is available
+    Rate limited: 5 requests per minute per IP to prevent enumeration attacks
     """
     username = request.GET.get('username', '')
     if not username:
         return Response(
-            {'error': 'Username parameter is required'}, 
+            {'error': 'Username parameter is required'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     is_available = not User.objects.filter(username=username).exists()
     return Response(
-        {'available': is_available}, 
+        {'available': is_available},
         status=status.HTTP_200_OK
     )
 
 
 @api_view(['GET'])
+@ratelimit(key='ip', rate='5/m', method='GET', block=True)
 def check_email(request):
     """
     Check if email is available
+    Rate limited: 5 requests per minute per IP to prevent enumeration attacks
     """
     email = request.GET.get('email', '')
     if not email:
         return Response(
-            {'error': 'Email parameter is required'}, 
+            {'error': 'Email parameter is required'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     is_available = not User.objects.filter(email=email).exists()
     return Response(
-        {'available': is_available}, 
+        {'available': is_available},
         status=status.HTTP_200_OK
     )
 

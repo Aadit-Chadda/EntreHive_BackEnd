@@ -3,11 +3,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from accounts.models import UserProfile
+from projects.models import Category
 
 
-def is_investor(user):
-    """Check if user has investor role"""
-    return hasattr(user, 'profile') and user.profile.user_role == 'investor'
+def is_investor_or_mentor(user):
+    """Check if user has investor or mentor role"""
+    return hasattr(user, 'profile') and user.profile.user_role in ['investor', 'mentor']
 
 
 @api_view(['GET', 'PUT'])
@@ -27,10 +28,10 @@ def investor_interests(request):
         "interests": ["AI", "Fintech", "EdTech"]
     }
     """
-    # Check if user is investor
-    if not is_investor(request.user):
+    # Check if user is investor or mentor
+    if not is_investor_or_mentor(request.user):
         return Response(
-            {'error': 'Access denied. This feature is only available to investors.'},
+            {'error': 'Access denied. This feature is only available to investors and mentors.'},
             status=status.HTTP_403_FORBIDDEN
         )
     
@@ -51,12 +52,10 @@ def investor_interests(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Validate each interest
-        valid_topics = [
-            'AI', 'Web Dev', 'Fintech', 'Robotics', 'Biotech', 
-            'Climate', 'Hardware', 'SaaS', 'EdTech', 'HealthTech', 
-            'Social Impact', 'Gaming'
-        ]
+        # Validate each interest against admin-managed categories
+        valid_topics = list(
+            Category.objects.filter(is_active=True).values_list('name', flat=True)
+        )
         
         for interest in interests:
             if not isinstance(interest, str):

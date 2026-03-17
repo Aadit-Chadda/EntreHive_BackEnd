@@ -6,24 +6,24 @@ from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from .models import Project, ProjectInvitation
+from .models import Project, ProjectInvitation, Category
 from .serializers import (
     ProjectSerializer, ProjectCreateSerializer, ProjectUpdateSerializer,
-    ProjectInvitationSerializer, AddTeamMemberSerializer
+    ProjectInvitationSerializer, AddTeamMemberSerializer, CategorySerializer
 )
 from notifications.models import Notification
 
 
-def is_investor(user):
-    """Check if user has investor role"""
-    return hasattr(user, 'profile') and user.profile.user_role == 'investor'
+def is_investor_or_mentor(user):
+    """Check if user has investor or mentor role"""
+    return hasattr(user, 'profile') and user.profile.user_role in ['investor', 'mentor']
 
 
-def restrict_investor_access(user):
-    """Raise exception if user is an investor"""
-    if is_investor(user):
+def restrict_investor_or_mentor_access(user):
+    """Raise exception if user is an investor or mentor"""
+    if is_investor_or_mentor(user):
         raise PermissionDenied(
-            detail="Access denied. Investors should use the investor-specific endpoints at /api/projects/investor/",
+            detail="Access denied. Investors and mentors should use the investor-specific endpoints at /api/projects/investor/",
             code=403
         )
 
@@ -32,6 +32,16 @@ class ProjectPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = 'page_size'
     max_page_size = 100
+
+
+class CategoryListView(generics.ListAPIView):
+    """List all active categories. Used by project create/edit forms."""
+    serializer_class = CategorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        return Category.objects.filter(is_active=True)
 
 
 class ProjectListCreateView(generics.ListCreateAPIView):
@@ -47,40 +57,53 @@ class ProjectListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         """
         Filter projects based on user permissions and visibility
-        RESTRICTED: Investors cannot use this endpoint
+        MODIFIED: Investors can READ (GET) but not CREATE (POST)
+        Investors only see approved public/university projects
         """
         user = self.request.user
+        user_is_investor_or_mentor = is_investor_or_mentor(user)
 
-        # Restrict investor access
-        restrict_investor_access(user)
         queryset = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile')
 
-        # Approval filtering - users can see:
-        # 1. Their own projects (any approval status)
-        # 2. Projects they're team members of (any approval status)
-        # 3. Only approved projects from others
-        user_projects_filter = Q(owner=user) | Q(team_members=user)
-        approval_filter = Q(approval_status='approved') | user_projects_filter
-        queryset = queryset.filter(approval_filter)
+        # For investors/mentors: only show approved public/university projects
+        if user_is_investor_or_mentor:
+            # Investors can only see approved public and university projects
+            investor_visibility_filter = Q(visibility='public')
+            if hasattr(user, 'profile') and user.profile.university:
+                investor_visibility_filter |= Q(visibility='university', university=user.profile.university)
 
-        # Filter by visibility - users can see:
-        # 1. Their own projects (any visibility)
-        # 2. Projects they're team members of (any visibility)
-        # 3. Public projects
-        # 4. University projects if they're from same university
-        # Note: Private projects are only visible to owner and team members
+            queryset = queryset.filter(
+                investor_visibility_filter,
+                approval_status='approved'
+            ).distinct()
+        else:
+            # Regular users (students/professors) logic
+            # Approval filtering - users can see:
+            # 1. Their own projects (any approval status)
+            # 2. Projects they're team members of (any approval status)
+            # 3. Only approved projects from others
+            user_projects_filter = Q(owner=user) | Q(team_members=user)
+            approval_filter = Q(approval_status='approved') | user_projects_filter
+            queryset = queryset.filter(approval_filter)
 
-        visibility_filter = Q(visibility='public')
+            # Filter by visibility - users can see:
+            # 1. Their own projects (any visibility)
+            # 2. Projects they're team members of (any visibility)
+            # 3. Public projects
+            # 4. University projects if they're from same university
+            # Note: Private projects are only visible to owner and team members
 
-        # Add university filter if user has university info - only show university projects from same university
-        if hasattr(user, 'profile') and user.profile.university:
-            visibility_filter |= Q(visibility='university', university=user.profile.university)
+            visibility_filter = Q(visibility='public')
 
-        # Add user's own projects and projects they're team members of (including private)
-        final_filter = visibility_filter | user_projects_filter
-        queryset = queryset.filter(final_filter).distinct()
-        
-        # Apply search filter
+            # Add university filter if user has university info - only show university projects from same university
+            if hasattr(user, 'profile') and user.profile.university:
+                visibility_filter |= Q(visibility='university', university=user.profile.university)
+
+            # Add user's own projects and projects they're team members of (including private)
+            final_filter = visibility_filter | user_projects_filter
+            queryset = queryset.filter(final_filter).distinct()
+
+        # Apply search filter (applies to all users)
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
@@ -117,7 +140,7 @@ class ProjectListCreateView(generics.ListCreateAPIView):
         Set the project owner to the current user when creating
         RESTRICTED: Investors cannot create projects
         """
-        restrict_investor_access(self.request.user)
+        restrict_investor_or_mentor_access(self.request.user)
         serializer.save(owner=self.request.user)
     
     def create(self, request, *args, **kwargs):
@@ -140,17 +163,19 @@ class ProjectListCreateView(generics.ListCreateAPIView):
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update or delete a project
-    RESTRICTED: Students and professors only. Investors use /api/projects/investor/<id>/
+    MODIFIED: Investors can VIEW (GET) but not UPDATE/DELETE
     """
     queryset = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile')
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [parsers.JSONParser, parsers.MultiPartParser, parsers.FormParser]
-    
+
     def initial(self, request, *args, **kwargs):
-        """Check access before any operations"""
+        """Check access before any operations - allow GET for investors"""
         super().initial(request, *args, **kwargs)
-        restrict_investor_access(request.user)
+        # Only block investors from write operations (PUT, PATCH, DELETE)
+        if request.method in ['PUT', 'PATCH', 'DELETE']:
+            restrict_investor_or_mentor_access(request.user)
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -301,7 +326,7 @@ def add_team_member(request, project_id):
     RESTRICTED: Students and professors only
     """
     # Restrict investor access
-    restrict_investor_access(request.user)
+    restrict_investor_or_mentor_access(request.user)
     
     try:
         project = Project.objects.get(id=project_id)
@@ -350,7 +375,7 @@ def remove_team_member(request, project_id, user_id):
     RESTRICTED: Students and professors only
     """
     # Restrict investor access
-    restrict_investor_access(request.user)
+    restrict_investor_or_mentor_access(request.user)
     
     try:
         project = Project.objects.get(id=project_id)
