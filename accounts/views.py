@@ -553,11 +553,20 @@ def resend_verification_email(request):
 @permission_classes([AllowAny])
 def simple_comprehensive_search(request):
     """
-    Comprehensive search that uses existing search endpoints
+    Comprehensive search with direct QuerySet operations (no RequestFactory).
+    Supports filtering by type and category.
     """
+    import re
+    from django.db.models import Count
+    from posts.models import Post
+    from posts.serializers import PostListSerializer
+    from projects.models import Project
+    from projects.serializers import ProjectSerializer
+
     search_query = request.GET.get('q', '').strip()
     search_type = request.GET.get('type', 'all')
-    
+    category = request.GET.get('category', '').strip()
+
     if not search_query:
         return Response({
             'users': [],
@@ -566,78 +575,131 @@ def simple_comprehensive_search(request):
             'hashtags': [],
             'message': 'Please provide a search query'
         }, status=status.HTTP_200_OK)
-    
+
+    user = request.user
     results = {
         'users': [],
         'posts': [],
         'projects': [],
         'hashtags': []
     }
-    
-    # Search Users
+
+    # --- Users ---
     if search_type in ['all', 'users']:
         try:
             user_profiles = UserProfile.objects.filter(
-                is_profile_public=True
+                is_profile_public=True, user__is_active=True
             ).filter(
                 Q(user__username__icontains=search_query) |
                 Q(first_name__icontains=search_query) |
                 Q(last_name__icontains=search_query) |
                 Q(bio__icontains=search_query)
-            ).order_by('-created_at')[:10]
-            
-            user_serializer = PublicUserProfileSerializer(user_profiles, many=True, context={'request': request})
-            results['users'] = user_serializer.data
+            ).select_related('user', 'university').order_by('-created_at')[:10]
+            results['users'] = PublicUserProfileSerializer(
+                user_profiles, many=True, context={'request': request}
+            ).data
         except Exception:
-            results['users'] = []
+            pass
 
-    # Search Projects using existing view
+    # --- Projects ---
     if search_type in ['all', 'projects']:
         try:
-            from django.test import RequestFactory
-            from projects.views import project_search
-            
-            factory = RequestFactory()
-            project_request = factory.get('/api/projects/search/', {'q': search_query})
-            project_request.user = request.user
-            
-            project_response = project_search(project_request)
-            if hasattr(project_response, 'data') and project_response.data:
-                results['projects'] = project_response.data.get('results', [])[:10]
-        except Exception:
-            results['projects'] = []
+            pqs = Project.objects.select_related('owner__profile').prefetch_related('team_members__profile')
+            if user.is_authenticated:
+                own = Q(owner=user) | Q(team_members=user)
+                pqs = pqs.filter(Q(approval_status='approved') | own)
+                vis = Q(visibility='public')
+                if hasattr(user, 'profile') and user.profile.university:
+                    vis |= Q(visibility='university', university=user.profile.university)
+                pqs = pqs.filter(vis | own)
+            else:
+                pqs = pqs.filter(visibility='public', approval_status='approved')
 
-    # Search Posts using existing view
+            sf = (
+                Q(title__icontains=search_query) |
+                Q(summary__icontains=search_query) |
+                Q(owner__username__icontains=search_query) |
+                Q(owner__profile__first_name__icontains=search_query) |
+                Q(owner__profile__last_name__icontains=search_query) |
+                Q(team_members__username__icontains=search_query) |
+                Q(team_members__profile__first_name__icontains=search_query) |
+                Q(team_members__profile__last_name__icontains=search_query) |
+                Q(categories__icontains=search_query) |
+                Q(tags__icontains=search_query) |
+                Q(needs__icontains=search_query)
+            )
+            project_types = [c[0] for c in Project.PROJECT_TYPE_CHOICES if search_query.lower() in c[1].lower()]
+            if project_types:
+                sf |= Q(project_type__in=project_types)
+            status_choices = [c[0] for c in Project.STATUS_CHOICES if search_query.lower() in c[1].lower()]
+            if status_choices:
+                sf |= Q(status__in=status_choices)
+
+            pqs = pqs.filter(sf)
+            if category:
+                pqs = pqs.filter(categories__icontains=category)
+            pqs = pqs.distinct().order_by('-created_at')[:10]
+            results['projects'] = ProjectSerializer(pqs, many=True, context={'request': request}).data
+        except Exception:
+            pass
+
+    # --- Posts ---
     if search_type in ['all', 'posts']:
         try:
-            from django.test import RequestFactory
-            from posts.views import post_search
-            
-            factory = RequestFactory()
-            post_request = factory.get('/api/search/', {'q': search_query})
-            post_request.user = request.user
-            
-            post_response = post_search(post_request)
-            if hasattr(post_response, 'data') and post_response.data:
-                results['posts'] = post_response.data.get('results', [])[:10]
-        except Exception:
-            results['posts'] = []
+            postqs = Post.objects.select_related('author', 'author__profile').prefetch_related(
+                'tagged_projects', 'likes', 'comments'
+            ).annotate(
+                likes_count=Count('likes', distinct=True),
+                comments_count=Count('comments', distinct=True)
+            )
+            if user.is_authenticated:
+                user_uni = getattr(user.profile, 'university', None) if hasattr(user, 'profile') else None
+                vis_filter = Q(visibility='public') | Q(author=user)
+                if user_uni:
+                    vis_filter |= Q(visibility='university', author__profile__university=user_uni)
+                postqs = postqs.filter(vis_filter)
+            else:
+                postqs = postqs.filter(visibility='public')
 
-    # Search Hashtags using existing view
+            if search_query.startswith('#'):
+                psf = Q(content__icontains=search_query)
+            else:
+                psf = (
+                    Q(content__icontains=search_query) |
+                    Q(author__username__icontains=search_query) |
+                    Q(author__profile__first_name__icontains=search_query) |
+                    Q(author__profile__last_name__icontains=search_query) |
+                    Q(tagged_projects__title__icontains=search_query) |
+                    Q(tagged_projects__categories__icontains=search_query) |
+                    Q(tagged_projects__tags__icontains=search_query)
+                )
+            postqs = postqs.filter(psf).distinct().order_by('-created_at')[:10]
+            results['posts'] = PostListSerializer(postqs, many=True, context={'request': request}).data
+        except Exception:
+            pass
+
+    # --- Hashtags ---
     if search_type in ['all', 'hashtags']:
         try:
-            from django.test import RequestFactory
-            from posts.views import hashtag_search
-            
-            factory = RequestFactory()
-            hashtag_request = factory.get('/api/hashtags/search/', {'q': search_query})
-            hashtag_request.user = request.user
-            
-            hashtag_response = hashtag_search(hashtag_request)
-            if hasattr(hashtag_response, 'data') and hashtag_response.data:
-                results['hashtags'] = hashtag_response.data.get('hashtags', [])[:10]
+            hqs = Post.objects.only('content')
+            if user.is_authenticated:
+                user_uni = getattr(user.profile, 'university', None) if hasattr(user, 'profile') else None
+                vis_filter = Q(visibility='public') | Q(author=user)
+                if user_uni:
+                    vis_filter |= Q(visibility='university', author__profile__university=user_uni)
+                hqs = hqs.filter(vis_filter)
+            else:
+                hqs = hqs.filter(visibility='public')
+
+            all_hashtags = set()
+            for post in hqs.iterator():
+                all_hashtags.update(re.findall(r'#(\w+)', post.content))
+            results['hashtags'] = sorted(
+                [t for t in all_hashtags if search_query.lower() in t.lower()],
+                key=lambda x: x.lower()
+            )[:10]
         except Exception:
-            results['hashtags'] = []
+            pass
 
     return Response({
         **results,
