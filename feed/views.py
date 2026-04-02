@@ -600,10 +600,96 @@ class TrendingTopicViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TrendingTopicSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     queryset = TrendingTopic.objects.all()
-    
+
     def get_queryset(self):
         queryset = TrendingTopic.objects.all()
         university_id = self.request.query_params.get('university')
         if university_id:
             queryset = queryset.filter(universities__id=university_id)
         return queryset.order_by('-mention_count')[:20]
+
+
+# ── Composite Explore Feed Endpoint ──────────────────────────────────────────
+
+from rest_framework.decorators import api_view, permission_classes as perm_classes
+from django.core.cache import cache as django_cache
+from accounts.models import UserProfile, Follow
+from accounts.serializers import PublicUserProfileSerializer
+from projects.serializers import CategorySerializer
+from projects.models import Category
+
+
+@api_view(['GET'])
+@perm_classes([permissions.IsAuthenticated])
+def explore_feed(request):
+    """
+    Composite explore endpoint.  Page 1 returns feed + trending + categories +
+    suggested users.  Subsequent pages return feed only.
+    """
+    user = request.user
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 20))
+
+    # Reuse the public timeline from TimelineFeedViewSet
+    feed_vs = TimelineFeedViewSet()
+    feed_vs.request = request
+    feed_vs.format_kwarg = None
+    timeline_items, total_count = feed_vs._get_timeline_feed(user, 'public', page, page_size)
+
+    # Build paginated feed portion
+    has_next = page * page_size < total_count
+    has_previous = page > 1
+    feed_data = {
+        'results': TimelineItemSerializer(timeline_items, many=True, context={'request': request}).data,
+        'count': total_count,
+        'page': page,
+        'page_size': page_size,
+        'has_next': has_next,
+        'has_previous': has_previous,
+    }
+
+    response = {'feed': feed_data}
+
+    # Only include sidebar data on first page
+    if page == 1:
+        # Trending topics + categories (cached 15 min)
+        sidebar = django_cache.get('explore_sidebar_data')
+        if sidebar is None:
+            sidebar = {
+                'trending_topics': TrendingTopicSerializer(
+                    TrendingTopic.objects.order_by('-mention_count')[:10], many=True
+                ).data,
+                'categories': CategorySerializer(
+                    Category.objects.filter(is_active=True).order_by('display_order', 'name'), many=True
+                ).data,
+            }
+            django_cache.set('explore_sidebar_data', sidebar, 60 * 15)
+
+        response['trending_topics'] = sidebar['trending_topics']
+        response['categories'] = sidebar['categories']
+
+        # Suggested users (not followed, prioritise same university)
+        followed_ids = list(
+            Follow.objects.filter(follower=user).values_list('following_id', flat=True)
+        )
+        profiles = UserProfile.objects.filter(
+            is_profile_public=True, user__is_active=True
+        ).exclude(user=user).exclude(user_id__in=followed_ids).select_related('user', 'university')
+
+        user_uni = getattr(user.profile, 'university', None) if hasattr(user, 'profile') else None
+        if user_uni:
+            profiles = profiles.annotate(
+                uni_priority=Case(
+                    When(university=user_uni, then=0),
+                    default=1,
+                    output_field=IntegerField()
+                )
+            ).order_by('uni_priority', '-created_at')
+        else:
+            profiles = profiles.order_by('-created_at')
+
+        response['suggested_users'] = PublicUserProfileSerializer(
+            profiles[:8], many=True, context={'request': request}
+        ).data
+
+    return Response(response, status=status.HTTP_200_OK)
