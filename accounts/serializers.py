@@ -435,7 +435,7 @@ class ExtendedRegisterSerializer(CustomRegisterSerializer):
         default='student',
         required=False
     )
-    bio = serializers.CharField(max_length=1000, required=False, allow_blank=True)
+    bio = serializers.CharField(max_length=5000, required=False, allow_blank=True)
     location = serializers.CharField(max_length=100, required=False, allow_blank=True)
     university_id = serializers.UUIDField(required=False, allow_null=True)
     verified_university = serializers.BooleanField(default=False, required=False)

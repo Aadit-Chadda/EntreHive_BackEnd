@@ -33,7 +33,7 @@ class UserProfile(models.Model):
         null=True,
         help_text="Upload a profile picture"
     )
-    bio = models.TextField(max_length=1000, blank=True, null=True, help_text="Tell us about yourself")
+    bio = models.TextField(max_length=5000, blank=True, null=True, help_text="Tell us about yourself")
     location = models.CharField(max_length=100, blank=True, null=True, help_text="City, Country")
     university = models.ForeignKey(
         'universities.University',
