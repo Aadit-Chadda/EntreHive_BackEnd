@@ -565,12 +565,9 @@ class CreateGroupConversationSerializer(serializers.Serializer):
         request = self.context.get('request')
         project = Project.objects.get(id=data['project_id'])
 
-        # Check if user has permission (professor/investor/mentor)
+        # Check if user has a profile
         if not hasattr(request.user, 'profile'):
             raise serializers.ValidationError("User must have a profile")
-
-        if request.user.profile.user_role not in ['professor', 'investor', 'mentor']:
-            raise serializers.ValidationError("Only professors, investors, and mentors can create group conversations")
 
         # Check if group conversation already exists for this project by this user
         existing_group = GroupConversation.objects.filter(
